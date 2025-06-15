@@ -1,0 +1,53 @@
+[build-system]
+requires = [
+    "setuptools>=61.0",
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pumper"
+version = "0.0.0"
+description = "Automated version bumping and changelog management using conventional commits"
+authors = [
+    { name = "Tatus9", email = "rafael@rro.one" },
+]
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "packaging>=25.0",
+    "rich>=14.0.0",
+    "typer>=0.16.0",
+    "tomli>=2.0.0",
+    "tomli-w>=1.0.0",
+    "loguru>=0.7.3",
+    "pre-commit>=3.0.0",
+]
+
+[project.scripts]
+pumper = "pumper.cli.main:run"
+
+[dependency-groups]
+dev = [
+    "pdbpp>=0.11.6",
+    "pytest>=8.4.0",
+]
+
+[tool.setuptools.package-dir]
+"" = "src"
+
+[tool.setuptools.packages.find]
+where = [
+    "src",
+]
+include = [
+    "pumper",
+    "pumper.*",
+]
+namespaces = true
+
+[tool.pytest.ini_options]
+testpaths = [
+    "tests",
+]
+python_files = "test_*.py"
+addopts = "-v"

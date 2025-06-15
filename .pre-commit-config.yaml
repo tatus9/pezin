@@ -1,0 +1,34 @@
+repos:
+  # Basic
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      -   id: trailing-whitespace
+      -   id: end-of-file-fixer
+      -   id: check-yaml
+          exclude: ^\.onedev-buildspec\.yml$
+      -   id: check-added-large-files
+          args: ['--maxkb=3000']
+      -   id: check-json
+      -   id: check-toml
+      -   id: detect-private-key
+      -   id: mixed-line-ending
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    # Ruff
+    rev: v0.9.4
+    hooks:
+      # Run the linter.
+      - id: ruff
+        args: [--fix]
+      # Run the formatter.
+      - id: ruff-format
+
+  - repo: local
+    hooks:
+      - id: pumper
+        name: Pumper Version Control
+        entry: bash -c 'repo_root=$(git rev-parse --show-toplevel) && PYTHONPATH=$repo_root/src:$PYTHONPATH python -m pumper.hooks.pre_commit "$1"'
+        language: system
+        args: ["${COMMIT_MSG_FILE}"]
+        stages: [commit-msg]
