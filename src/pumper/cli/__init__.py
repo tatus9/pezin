@@ -1,7 +1,7 @@
 """CLI package for pumper."""
 
+from .commands import bump_version, get_commits_since_last_tag, update_changelog
 from .main import app
-from .commands import bump_version, update_changelog, get_commits_since_last_tag
 from .utils import find_project_root
 
 __all__ = [

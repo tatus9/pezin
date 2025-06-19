@@ -26,9 +26,20 @@ repos:
 
   - repo: local
     hooks:
-      - id: pumper
-        name: Pumper Version Control
-        entry: bash -c 'repo_root=$(git rev-parse --show-toplevel) && PYTHONPATH=$repo_root/src:$PYTHONPATH python -m pumper.hooks.pre_commit "$1"'
+      # Modern hook system (recommended)
+      - id: pumper-prepare-commit-msg
+        name: Pumper Prepare Commit Message
+        entry: python3 -m pumper.hooks.prepare_commit_msg
         language: system
-        args: ["${COMMIT_MSG_FILE}"]
+        stages: [prepare-commit-msg]
+        always_run: true
+        pass_filenames: false
+
+      # Legacy hook system (fallback compatibility)
+      - id: pumper-commit-msg
+        name: Pumper Version Control (Legacy)
+        entry: python3 -m pumper.hooks.pre_commit
+        language: system
         stages: [commit-msg]
+        always_run: true
+        pass_filenames: false

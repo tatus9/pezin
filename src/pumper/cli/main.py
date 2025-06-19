@@ -1,21 +1,40 @@
 """CLI entry point for pumper tool."""
 
+import logging
 import subprocess
+
+# Set up logging conditionally based on command
+import sys
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import tomli
-import tomli_w
 import typer
 from rich.console import Console
 
-from ..core.version import VersionBumpType, Version, ConventionalCommit
-from . import commands
-from . import utils
-from ..logging import setup_logging, get_logger
+from ..core.version import VersionBumpType
+from ..logging import get_logger, setup_logging
+from . import commands, hooks
 
-# Set up centralized logging
-setup_logging()
+# Check if this is a version-only command
+is_version_command = any(arg in ["--version", "-v", "version"] for arg in sys.argv[1:])
+
+if not is_version_command:
+    setup_logging()
+else:
+    # For version commands, suppress all logging output
+    logging.getLogger().setLevel(logging.CRITICAL)
+    # Also suppress all pumper module loggers
+    for logger_name in [
+        "pumper",
+        "pumper.cli",
+        "pumper.cli.commands",
+        "pumper.core",
+        "pumper.hooks",
+    ]:
+        logging.getLogger(logger_name).setLevel(logging.CRITICAL)
+
+# Always get logger, but conditionally set up logging
 logger = get_logger()
 
 # Initialize Typer app and console
@@ -28,6 +47,146 @@ app = typer.Typer(
 console = Console()
 
 
+def get_pumper_version() -> str:
+    """Get the pumper version."""
+    # Try to get version from package metadata first
+    try:
+        import importlib.metadata
+
+        return importlib.metadata.version("pumper")
+    except importlib.metadata.PackageNotFoundError:
+        # Fallback to reading from pyproject.toml in development
+        try:
+            project_root = Path(__file__).parents[
+                3
+            ]  # src/pumper/cli/main.py -> project root
+            pyproject_path = project_root / "pyproject.toml"
+            if pyproject_path.exists():
+                with open(pyproject_path, "rb") as f:
+                    data = tomli.load(f)
+                version = data.get("project", {}).get("version", "unknown")
+                return f"{version} (development)"
+            else:
+                return "unknown"
+        except Exception:
+            return "unknown"
+
+
+def get_version_quietly(config_file: Path) -> Optional[str]:
+    """Get version from config file without verbose logging."""
+    try:
+        if config_file.suffix == ".toml":
+            with open(config_file, "rb") as f:
+                data = tomli.load(f)
+
+            # Try project section first
+            if "project" in data and "version" in data["project"]:
+                return data["project"]["version"]
+
+            # Try pumper section next
+            if "pumper" in data and "version" in data["pumper"]:
+                return data["pumper"]["version"]
+
+            # Try tool.pumper section
+            if (
+                "tool" in data
+                and "pumper" in data["tool"]
+                and "version" in data["tool"]["pumper"]
+            ):
+                return data["tool"]["pumper"]["version"]
+
+        elif config_file.suffix == ".json":
+            import json
+
+            with open(config_file, "r") as f:
+                data = json.load(f)
+                if "version" in data:
+                    return data["version"]
+
+        return None
+    except Exception:
+        return None
+
+
+def get_current_project_info() -> Tuple[Optional[str], Optional[str]]:
+    """Get current directory project name and version if 100% confident.
+
+    Returns:
+        Tuple of (project_name, version) or (None, None) if not confident
+    """
+    try:
+        # Import find_config_file locally to avoid triggering logging setup
+
+        def find_config_file_local(cwd: Path) -> Optional[Path]:
+            """Local version of find_config_file to avoid logging setup."""
+            potential_configs = [
+                cwd / "pyproject.toml",
+                cwd / "pumper.toml",
+                cwd / "setup.cfg",
+                cwd / "package.json",
+            ]
+            for config_file in potential_configs:
+                if config_file.exists():
+                    return config_file
+            return None
+
+        # Find config file in current directory
+        cwd = Path.cwd()
+        config_file = find_config_file_local(cwd)
+        if not config_file:
+            return None, None
+
+        # Get project version using existing robust functionality
+        # For version commands, avoid verbose logging by using minimal version reading
+        if is_version_command:
+            project_version = get_version_quietly(config_file)
+        else:
+            project_version = commands.get_current_version(config_file)
+        if not project_version:
+            return None, None
+
+        # Try to get project name from the config file
+        project_name = None
+        try:
+            if config_file.suffix == ".toml":
+                with open(config_file, "rb") as f:
+                    data = tomli.load(f)
+
+                # Try different locations for project name
+                if "project" in data and "name" in data["project"]:
+                    project_name = data["project"]["name"]
+                elif "name" in data:
+                    project_name = data["name"]
+                elif (
+                    "tool" in data
+                    and "pumper" in data["tool"]
+                    and "name" in data["tool"]["pumper"]
+                ):
+                    project_name = data["tool"]["pumper"]["name"]
+
+            elif config_file.suffix == ".json":  # package.json
+                with open(config_file, "r") as f:
+                    import json
+
+                    data = json.load(f)
+                    if "name" in data:
+                        project_name = data["name"]
+
+        except Exception:
+            # If we can't get project name, that's okay - we still have version
+            pass
+
+        # Only return if we have at least a version, name is optional
+        if project_version:
+            return project_name, project_version
+
+        return None, None
+
+    except Exception:
+        # Any error means we're not 100% confident
+        return None, None
+
+
 def validate_prerelease(value: Optional[str]) -> Optional[str]:
     """Validate pre-release label."""
     if value is not None and value not in ["alpha", "beta", "rc"]:
@@ -35,8 +194,80 @@ def validate_prerelease(value: Optional[str]) -> Optional[str]:
     return value
 
 
+def version_callback(value: bool) -> None:
+    """Global version callback."""
+    if value:
+        # Try to get current project info first
+        project_name, project_version = get_current_project_info()
+        pumper_version = get_pumper_version()
+
+        # Show project version if we found one and it's not pumper itself
+        if project_version and project_name != "pumper":
+            if project_name:
+                console.print(f"{project_name} {project_version}")
+            else:
+                console.print(project_version)
+
+        # Always show pumper version
+        console.print(f"pumper {pumper_version}")
+        raise typer.Exit()
+
+
+@app.command(name="version")
+def version_command() -> None:
+    """Show pumper version and exit."""
+    # Try to get current project info first
+    project_name, project_version = get_current_project_info()
+    pumper_version = get_pumper_version()
+
+    # Show project version if we found one and it's not pumper itself
+    if project_version and project_name != "pumper":
+        if project_name:
+            console.print(f"{project_name} {project_version}")
+        else:
+            console.print(project_version)
+
+    # Always show pumper version
+    console.print(f"pumper {pumper_version}")
+
+
+@app.callback()
+def main(
+    version: Optional[bool] = typer.Option(
+        None,
+        "--version",
+        "-v",
+        callback=version_callback,
+        is_eager=True,
+        help="Show version and exit",
+    ),
+) -> None:
+    """Version management and changelog tool for semantic versioning."""
+    pass
+
+
+def _is_amend_commit_with_args(
+    commit_source: Optional[str], commit_sha: Optional[str], commit_message: str
+) -> bool:
+    """Check if the current commit is an amend operation using prepare-commit-msg hook arguments.
+
+    Args:
+        commit_source: The source of the commit message (from prepare-commit-msg hook)
+        commit_sha: The SHA of the commit being amended (from prepare-commit-msg hook)
+        commit_message: The commit message content
+
+    Returns:
+        True if this is an amend operation, False otherwise
+    """
+    # Import here to avoid circular imports
+    from ..hooks.pre_commit import is_amend_commit
+
+    # Use the unified amend detection function
+    return is_amend_commit(commit_source, commit_sha, commit_message)
+
+
 def _is_amend_commit(commit_message: str) -> bool:
-    """Check if the current commit is an amend operation."""
+    """Check if the current commit is an amend operation using legacy methods."""
     try:
         # Check if HEAD commit exists at all
         result = subprocess.run(
@@ -343,90 +574,61 @@ def hook_command(
         dir_okay=False,
         resolve_path=True,
     ),
+    commit_source: Optional[str] = typer.Argument(
+        None, help="Source of the commit message (from prepare-commit-msg hook)"
+    ),
+    commit_sha: Optional[str] = typer.Argument(
+        None, help="SHA of the commit being amended (from prepare-commit-msg hook)"
+    ),
+    config_file: Optional[Path] = typer.Option(
+        None,
+        "--config",
+        "-c",
+        help="Path to configuration file (auto-detected if not provided)",
+        exists=False,
+        file_okay=True,
+        dir_okay=False,
+        resolve_path=True,
+    ),
+    version_file: Optional[Path] = typer.Option(
+        None,
+        "--version-file",
+        "-v",
+        help="Path to version file (overrides config)",
+        exists=False,
+        file_okay=True,
+        dir_okay=False,
+        resolve_path=True,
+    ),
+    skip_amend_detection: bool = typer.Option(
+        False,
+        "--skip-amend-detection",
+        help="Skip amend detection (useful for testing)",
+        hidden=True,
+    ),
 ) -> None:
     """Process a commit message file for version bumping.
 
     This command is intended to be used as a git hook to automatically
     update version numbers based on conventional commit messages.
+
+    Can be used as either prepare-commit-msg or commit-msg hook.
+    When used as prepare-commit-msg, Git provides additional arguments
+    that enable reliable amend detection.
     """
+    # Import and call the pre_commit module directly to use the modern multi-file system
+    from ..hooks.pre_commit import main as pre_commit_main
+
     try:
-        # Read commit message
-        message = commit_msg_file.read_text().strip()
-        if not message:
-            console.print("[yellow]Warning:[/] Empty commit message")
-            raise typer.Exit(0)
-
-        # Check if this is an amend commit
-        if _is_amend_commit(message):
-            console.print("[yellow]Amend commit detected - skipping version bump[/]")
-            raise typer.Exit(0)
-
-        # Process commit message
-        try:
-            commit = ConventionalCommit.parse(message)
-            console.print(f"Commit type: {commit.type}")
-
-            bump_type = commit.get_bump_type()
-            console.print(f"Bump type: {bump_type}")
-
-            if bump_type is None:
-                console.print("[yellow]No version bump needed[/]")
-                raise typer.Exit(0)
-
-            # Find version file (look for pyproject.toml in repo root)
-            repo_root = utils.find_project_root()
-            if commit_msg_file.is_absolute():
-                # If we're given an absolute path (like in tests), use the parent directory
-                repo_root = utils.find_project_root(
-                    current_path=Path(commit_msg_file.parent)
-                )
-            console.print(f"Repository root: {repo_root}")
-            version_file = repo_root / "pyproject.toml"
-            if not version_file.exists():
-                console.print(
-                    f"[yellow]Warning:[/] Version file not found: {version_file}"
-                )
-                raise typer.Exit(0)
-
-            # Read current version
-            with open(version_file, "rb") as f:
-                config = tomli.load(f)
-                current = config["project"]["version"]
-            console.print(f"Current version: {current}")
-
-            # Process pre-release label
-            prerelease = commit.get_prerelease_label()
-            console.print(f"Pre-release label: {prerelease}")
-
-            # Get the footer tokens directly for debugging
-            footer_tokens = commit.get_footer_tokens()
-            console.print(f"Footer tokens: {footer_tokens}")
-
-            # Bump version
-            version = Version.parse(current)
-            new_version = version.bump(bump_type, prerelease)
-            console.print(f"Bumping to: {new_version}")
-
-            # Update version file
-            config["project"]["version"] = str(new_version)
-            with open(version_file, "wb") as f:
-                tomli_w.dump(config, f)
-
-            # Stage version file
-            try:
-                subprocess.run(
-                    ["git", "add", str(version_file)], capture_output=True, check=True
-                )
-                console.print("[green]Version file staged[/]")
-            except Exception as e:
-                console.print(f"[yellow]Git staging skipped:[/] {e}")
-
-            console.print(f"[green]✨ Version bumped to {new_version}[/]")
-
-        except ValueError as e:
-            console.print(f"[yellow]Warning:[/] {e}")
-            # Non-conventional commits are allowed, just don't bump version
-            raise typer.Exit(0)
+        # Call the pre_commit main function with the provided arguments
+        pre_commit_main(
+            commit_msg_file=commit_msg_file,
+            commit_source=commit_source,
+            commit_sha=commit_sha,
+            config_file=config_file,
+            version_file=version_file,
+            skip_amend_detection=skip_amend_detection,
+        )
 
     except typer.Exit:
         # Re-raise typer.Exit exceptions as-is (they have their own exit codes)
@@ -434,6 +636,45 @@ def hook_command(
     except Exception as e:
         console.print(f"[red]Hook failed:[/] {e}")
         raise typer.Exit(1)
+
+
+@app.command(name="install-hooks")
+def install_hooks_command(
+    config_file: Optional[Path] = typer.Option(
+        None,
+        "--config",
+        "-c",
+        help="Configuration file to reference in hooks",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        resolve_path=True,
+    ),
+    create_tag: bool = typer.Option(
+        True,
+        "--create-tag/--no-create-tag",
+        help="Enable automatic git tag creation in post-commit hook",
+    ),
+    legacy_mode: bool = typer.Option(
+        False,
+        "--legacy/--modern",
+        help="Use legacy commit-msg hook instead of prepare-commit-msg + post-commit",
+    ),
+) -> None:
+    """Install Pumper Git hooks for automatic version management."""
+    hooks.install_hooks(config_file, create_tag, legacy_mode)
+
+
+@app.command(name="uninstall-hooks")
+def uninstall_hooks_command() -> None:
+    """Uninstall Pumper Git hooks."""
+    hooks.uninstall_hooks()
+
+
+@app.command(name="hooks-status")
+def hooks_status_command() -> None:
+    """Show status of Pumper Git hooks."""
+    hooks.status_hooks()
 
 
 def run() -> None:

@@ -2,13 +2,14 @@
 
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Dict, Any, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+
 import tomli
 import tomli_w
 
 from ..core.changelog import ChangelogConfig, ChangelogManager
 from ..core.commit import ConventionalCommit
-from ..core.version import Version, VersionBumpType
+from ..core.version import Version, VersionBumpType, VersionFileConfig, VersionManager
 from ..logging import get_logger
 
 logger = get_logger()
@@ -49,12 +50,19 @@ def read_config(config_file: Path) -> Dict[str, Any]:
     config = read_toml_file(config_file)
     base_dir = config_file.parent
 
-    # Initialize pumper section if needed
-    if "pumper" not in config:
-        config["pumper"] = {}
+    # Initialize pumper section if needed - check both locations
+    pumper_config = {}
+    if "pumper" in config:
+        pumper_config = config["pumper"]
+    elif "tool" in config and "pumper" in config["tool"]:
+        pumper_config = config["tool"]["pumper"]
+
+    # Ensure pumper section exists in the expected location
+    config["pumper"] = pumper_config
 
     # Make paths absolute
-    if "pumper" in config:
+    if config["pumper"]:
+        # Handle legacy single version_file configuration
         if "version_file" in config["pumper"]:
             version_path = Path(config["pumper"]["version_file"])
             if not version_path.is_absolute():
@@ -63,6 +71,19 @@ def read_config(config_file: Path) -> Dict[str, Any]:
                     f"Making version_file path absolute: {version_path} -> {abs_path}"
                 )
                 config["pumper"]["version_file"] = str(abs_path)
+
+        # Handle new multi-file version_files configuration
+        if "version_files" in config["pumper"]:
+            version_files = config["pumper"]["version_files"]
+            for i, file_config in enumerate(version_files):
+                if isinstance(file_config, dict) and "path" in file_config:
+                    file_path = Path(file_config["path"])
+                    if not file_path.is_absolute():
+                        abs_path = resolve_path(file_path, base_dir)
+                        logger.debug(
+                            f"Making version_files[{i}] path absolute: {file_path} -> {abs_path}"
+                        )
+                        config["pumper"]["version_files"][i]["path"] = str(abs_path)
 
         if "changelog_file" in config["pumper"]:
             changelog_path = Path(config["pumper"]["changelog_file"])
@@ -147,7 +168,7 @@ def read_raw_version(file_path: Path) -> Optional[str]:
 def get_version_info(
     config_file: Path, config: Optional[Dict[str, Any]] = None
 ) -> Tuple[str, Path]:
-    """Get version information from config or file."""
+    """Get version information from config or file (legacy function)."""
     if config is None:
         config = read_config(config_file)
 
@@ -180,6 +201,39 @@ def get_version_info(
         raise FileNotFoundError(f"Version file not found: {version_file}")
 
     raise ValueError(f"Version not found in {version_file}")
+
+
+def get_version_manager(
+    config_file: Path, config: Optional[dict] = None
+) -> VersionManager:
+    """Get VersionManager instance from configuration."""
+    if config is None:
+        config = read_config(config_file)
+
+    # Check if we have new multi-file configuration
+    if config and "pumper" in config and "version_files" in config["pumper"]:
+        return VersionManager.from_config(config["pumper"])
+    else:
+        # Create manager from legacy configuration
+        if config and "pumper" in config and "version_file" in config["pumper"]:
+            version_file = config["pumper"]["version_file"]
+        else:
+            version_file = str(config_file)
+
+        return VersionManager([VersionFileConfig(path=version_file)])
+
+
+def get_current_version(
+    config_file: Path, config: Optional[dict] = None
+) -> Optional[str]:
+    """Get current version using the new VersionManager system."""
+    try:
+        version_manager = get_version_manager(config_file, config)
+        version = version_manager.get_primary_version()
+        return str(version) if version else None
+    except Exception as e:
+        logger.error(f"Failed to get current version: {e}")
+        return None
 
 
 def write_version_to_file(
@@ -279,7 +333,7 @@ def bump_version(
     dry_run: bool = False,
     prerelease: Optional[str] = None,
 ) -> Optional[str]:
-    """Bump version in config file."""
+    """Bump version in config file and all configured version files."""
     try:
         # Read config if not provided
         if config is None and config_file.suffix == ".toml":
@@ -287,18 +341,47 @@ def bump_version(
 
         logger.debug(f"Bumping version with config: {config}")
 
-        # Get current version and its location
-        current, version_file = get_version_info(config_file, config)
-        version = Version.parse(current)
-        new_version = str(version.bump(bump_type, prerelease))
+        # Check if we have new multi-file configuration
+        if config and "pumper" in config and "version_files" in config["pumper"]:
+            # Use new VersionManager system
+            version_manager = VersionManager.from_config(config["pumper"])
 
-        if not dry_run:
-            write_version_to_file(version_file, new_version)
-            logger.info(f"Version bumped: {current} -> {new_version}")
+            # Get current version from primary file
+            current_version = version_manager.get_primary_version()
+            if not current_version:
+                raise ValueError("No version found in configured files")
+
+            # Check version consistency across all files
+            if not version_manager.validate_version_consistency():
+                logger.warning("Version inconsistency detected across files")
+
+            # Calculate new version
+            new_version = current_version.bump(bump_type, prerelease)
+
+            if not dry_run:
+                updated_files = version_manager.write_versions(new_version)
+                logger.info(f"Version bumped: {current_version} -> {new_version}")
+                logger.info(f"Updated files: {', '.join(updated_files)}")
+            else:
+                versions = version_manager.read_versions()
+                logger.info(f"Dry run - Would bump: {current_version} -> {new_version}")
+                logger.info(f"Files to update: {', '.join(versions.keys())}")
+
+            return str(new_version)
+
         else:
-            logger.info(f"Dry run - Would bump: {current} -> {new_version}")
+            # Fallback to legacy single file logic
+            current, version_file = get_version_info(config_file, config)
+            version = Version.parse(current)
+            new_version = str(version.bump(bump_type, prerelease))
 
-        return new_version
+            if not dry_run:
+                write_version_to_file(version_file, new_version)
+                logger.info(f"Version bumped: {current} -> {new_version}")
+            else:
+                logger.info(f"Dry run - Would bump: {current} -> {new_version}")
+
+            return new_version
 
     except Exception as e:
         logger.error(f"Failed to bump version: {e}")

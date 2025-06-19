@@ -19,7 +19,11 @@ Add to your `.pre-commit-config.yaml`:
 
 ```yaml
 repos:
+<<<<<<< HEAD
   - repo: https://github.com/tatus9/pumper
+=======
+  - repo: https://github.com/tatus9/pumper
+>>>>>>> 66fcc00 (docs: restructure README and create comprehensive documentation)
     rev: v0.0.1  # Use the latest version
     hooks:
       - id: pumper
@@ -67,4 +71,8 @@ Test your installation:
 git commit -m "feat: test pumper installation"
 
 # Check if version was bumped in your version file
+<<<<<<< HEAD
 ```
+=======
+```
+>>>>>>> 66fcc00 (docs: restructure README and create comprehensive documentation)

@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pumper"
-version = "0.0.0"
+version = "0.1.0"
 description = "Automated version bumping and changelog management using conventional commits"
 authors = [
     { name = "Tatus9", email = "rafael@rro.one" },

@@ -1,9 +1,11 @@
-import pytest
 from datetime import datetime
+
+import pytest
+
 from pumper.core.changelog import (
+    DEFAULT_SECTIONS,
     ChangelogConfig,
     ChangelogManager,
-    DEFAULT_SECTIONS,
     CommitType,
     ConventionalCommit,
 )

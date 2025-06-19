@@ -1,8 +1,9 @@
-import pytest
-from pathlib import Path
-import tempfile
 import subprocess
+import tempfile
+from pathlib import Path
 from typing import Generator, Tuple
+
+import pytest
 
 
 @pytest.fixture

@@ -12,7 +12,6 @@ wheels/
 
 # UV Environment
 .venv/
-uv.lock
 
 # IDEs and Editors
 .vscode/

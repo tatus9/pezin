@@ -1,8 +1,8 @@
 """Centralized logging configuration for Pumper using loguru."""
 
 import os
-import sys
 import subprocess
+import sys
 from pathlib import Path
 from typing import Optional
 

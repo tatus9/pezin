@@ -1,13 +1,14 @@
 """CLI test suite."""
 
-import logging
-import pytest
 from pathlib import Path
+
+import pytest
 import tomli
 from typer.testing import CliRunner
+
 from pumper.cli.main import app
 
-logging.basicConfig(level=logging.DEBUG)
+# Test logging is handled by pytest configuration
 
 
 @pytest.fixture
@@ -22,7 +23,7 @@ def test_files(tmp_path: Path):
 
     def _create_files(path: Path, copy_defaults: bool = True):
         path.mkdir(parents=True, exist_ok=True)
-        logging.debug(f"Creating test files in {path}")
+        # Creating test files in specified path
 
         if copy_defaults:
             # Create version file
@@ -38,6 +39,39 @@ def test_files(tmp_path: Path):
     return _create_files
 
 
+@pytest.fixture
+def test_project_files(tmp_path: Path):
+    """Create test project files for version detection testing."""
+
+    def _create_project(
+        project_type: str, name: str = "test-project", version: str = "1.2.3"
+    ):
+        project_dir = tmp_path / "test_project"
+        project_dir.mkdir(exist_ok=True)
+
+        if project_type == "pyproject":
+            config_file = project_dir / "pyproject.toml"
+            config_file.write_text(f'''[project]
+name = "{name}"
+version = "{version}"
+''')
+        elif project_type == "package_json":
+            config_file = project_dir / "package.json"
+            import json
+
+            config_file.write_text(json.dumps({"name": name, "version": version}))
+        elif project_type == "pumper_toml":
+            config_file = project_dir / "pumper.toml"
+            config_file.write_text(f'''[project]
+name = "{name}"
+version = "{version}"
+''')
+
+        return project_dir, config_file
+
+    return _create_project
+
+
 def test_cli_help(cli_runner):
     """Test CLI help output."""
     result = cli_runner.invoke(app, ["--help"])
@@ -48,13 +82,12 @@ def test_cli_help(cli_runner):
     assert "patch" in result.output
 
 
-# TODO: implement pre-release first
-# def test_bump_command_help(cli_runner):
-#     """Test bump command help output."""
-#     result = cli_runner.invoke(app, ["patch", "--help"])
-#     assert result.exit_code == 0
-#     assert "--message" in result.output
-#     assert "--pre-release" in result.output
+def test_bump_command_help(cli_runner):
+    """Test bump command help output."""
+    result = cli_runner.invoke(app, ["patch", "--help"])
+    assert result.exit_code == 0
+    assert "--message" in result.output
+    assert "--pre" in result.output
 
 
 def test_bump_command_basic(cli_runner, test_files, tmp_path):
@@ -100,14 +133,13 @@ changelog_file = "custom_changelog.md"
         changelog_file = test_dir / "custom_changelog.md"
         changelog_file.write_text("# Changelog\n\n## [Unreleased]\n")
 
-        logging.debug(f"Test directory contents: {list(test_dir.glob('*'))}")
-        logging.debug(f"Using config file: {config_file}")
+        # Test directory setup with config file
 
         result = cli_runner.invoke(
             app, ["patch", "--config", str(config_file), "-m", "fix: config test"]
         )
         if result.exit_code != 0:
-            logging.error(f"Command output:\n{result.output}")
+            print(f"Command output:\n{result.output}")
 
         assert result.exit_code == 0, f"Command failed:\n{result.output}"
 
@@ -141,14 +173,13 @@ changelog_file = "CHANGES.md"
         changelog_file = test_dir / "CHANGES.md"
         changelog_file.write_text("# Changelog\n\n## [Unreleased]\n")
 
-        logging.debug(f"Test directory contents: {list(test_dir.glob('*'))}")
-        logging.debug(f"Using config file: {config_file}")
+        # Test directory setup with external version file
 
         result = cli_runner.invoke(
             app, ["patch", "--config", str(config_file), "-m", "fix: external version"]
         )
         if result.exit_code != 0:
-            logging.error(f"Command output:\n{result.output}")
+            print(f"Command output:\n{result.output}")
 
         assert result.exit_code == 0, f"Command failed:\n{result.output}"
 
@@ -158,21 +189,39 @@ changelog_file = "CHANGES.md"
         assert "external version" in changelog_file.read_text()
 
 
-# TODO: implement pre-release first
-# def test_bump_command_invalid_prerelease(cli_runner, test_files):
-#     """Test bump command with invalid pre-release label."""
-#     with cli_runner.isolated_filesystem() as td:
-#         test_dir = Path(td)
-#         version_file = test_dir / "pyproject.toml"
-#         version_file.write_text('[project]\nversion = "0.1.0"\n')
+def test_bump_command_valid_prerelease(cli_runner, test_files):
+    """Test bump command with valid pre-release label."""
+    with cli_runner.isolated_filesystem() as td:
+        test_dir = Path(td)
+        version_file = test_dir / "pyproject.toml"
+        version_file.write_text('[project]\nversion = "0.1.0"\n')
 
-#         result = cli_runner.invoke(app, [
-#             "patch",
-#             "--pre-release", "invalid",
-#             "-m", "fix: test"
-#         ])
-#         assert result.exit_code == 2
-#         assert "alpha, beta, rc" in result.output
+        changelog_file = test_dir / "CHANGELOG.md"
+        changelog_file.write_text("# Changelog\n\n## [Unreleased]\n")
+
+        result = cli_runner.invoke(
+            app, ["patch", "--pre", "beta", "-m", "fix: test with beta"]
+        )
+        assert result.exit_code == 0
+
+        # Verify version bump with prerelease
+        with open(version_file, "rb") as f:
+            config = tomli.load(f)
+        assert config["project"]["version"] == "0.1.1-beta"
+
+
+def test_bump_command_invalid_prerelease(cli_runner, test_files):
+    """Test bump command with invalid pre-release label."""
+    with cli_runner.isolated_filesystem() as td:
+        test_dir = Path(td)
+        version_file = test_dir / "pyproject.toml"
+        version_file.write_text('[project]\nversion = "0.1.0"\n')
+
+        result = cli_runner.invoke(
+            app, ["patch", "--pre", "invalid", "-m", "fix: test"]
+        )
+        assert result.exit_code == 2
+        assert "alpha, beta, rc" in result.output
 
 
 def test_bump_command_no_version_file(cli_runner):
@@ -198,4 +247,118 @@ def test_bump_command_no_changelog(cli_runner, test_files):
         assert "## [0.1.1]" in changelog_file.read_text()
 
 
-# [Other test functions remain the same...]
+def test_version_flag_clean_output(cli_runner):
+    """Test that -v flag produces clean output without logs."""
+    result = cli_runner.invoke(app, ["-v"])
+    assert result.exit_code == 0
+    # Should only contain version line, no logging output
+    lines = [line for line in result.output.strip().split("\n") if line.strip()]
+    assert len(lines) >= 1
+    assert "pumper" in lines[-1]  # Last line should be pumper version
+    # Should not contain logging messages
+    assert "INFO" not in result.output
+    assert "DEBUG" not in result.output
+    assert "Found config file" not in result.output
+
+
+def test_version_command_clean_output(cli_runner):
+    """Test that version subcommand produces clean output without logs."""
+    result = cli_runner.invoke(app, ["version"])
+    assert result.exit_code == 0
+    # Should only contain version line, no logging output
+    lines = [line for line in result.output.strip().split("\n") if line.strip()]
+    assert len(lines) >= 1
+    assert "pumper" in lines[-1]  # Last line should be pumper version
+    # Should not contain logging messages
+    assert "INFO" not in result.output
+    assert "DEBUG" not in result.output
+    assert "Found config file" not in result.output
+
+
+def test_version_flag_vs_version_command_consistency(cli_runner):
+    """Test that -v flag and version command produce identical output."""
+    result_flag = cli_runner.invoke(app, ["-v"])
+    result_command = cli_runner.invoke(app, ["version"])
+
+    assert result_flag.exit_code == 0
+    assert result_command.exit_code == 0
+    assert result_flag.output == result_command.output
+
+
+def test_project_version_detection_functions(test_project_files):
+    """Test the project version detection functions work correctly."""
+    import os
+
+    from pumper.cli.main import get_current_project_info, get_version_quietly
+
+    # Test pyproject.toml detection
+    project_dir, config_file = test_project_files("pyproject", "my-project", "2.1.0")
+
+    # Change to project directory for testing
+    original_cwd = os.getcwd()
+    try:
+        os.chdir(project_dir)
+
+        # Test quiet version reading
+        version = get_version_quietly(config_file)
+        assert version == "2.1.0"
+
+        # Test project info detection
+        name, version = get_current_project_info()
+        assert name == "my-project"
+        assert version == "2.1.0"
+
+    finally:
+        os.chdir(original_cwd)
+
+
+def test_project_version_detection_package_json(test_project_files):
+    """Test version detection with package.json files."""
+    import os
+
+    from pumper.cli.main import get_current_project_info, get_version_quietly
+
+    # Test package.json detection
+    project_dir, config_file = test_project_files(
+        "package_json", "my-node-project", "3.2.1"
+    )
+
+    # Change to project directory for testing
+    original_cwd = os.getcwd()
+    try:
+        os.chdir(project_dir)
+
+        # Test quiet version reading
+        version = get_version_quietly(config_file)
+        assert version == "3.2.1"
+
+        # Test project info detection
+        name, version = get_current_project_info()
+        assert name == "my-node-project"
+        assert version == "3.2.1"
+
+    finally:
+        os.chdir(original_cwd)
+
+
+def test_project_version_detection_no_config(tmp_path):
+    """Test version detection when no config file exists."""
+    import os
+
+    from pumper.cli.main import get_current_project_info
+
+    # Create empty directory
+    empty_dir = tmp_path / "empty"
+    empty_dir.mkdir()
+
+    original_cwd = os.getcwd()
+    try:
+        os.chdir(empty_dir)
+
+        # Should return None, None when no config found
+        name, version = get_current_project_info()
+        assert name is None
+        assert version is None
+
+    finally:
+        os.chdir(original_cwd)

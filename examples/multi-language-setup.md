@@ -37,10 +37,17 @@ version = "1.0.0"
 version_files = [
     # Python backend (auto-detected)
     {path = "pyproject.toml"},
+<<<<<<< HEAD
 
     # Node.js frontend
     {path = "frontend/package.json", file_type = "json"},
 
+=======
+
+    # Node.js frontend
+    {path = "frontend/package.json", file_type = "json"},
+
+>>>>>>> 66fcc00 (docs: restructure README and create comprehensive documentation)
     # Docker image
     {
         path = "Dockerfile",
@@ -64,7 +71,11 @@ version_files = [
         version_pattern = '#define VERSION "([^"]+)"',
         version_replacement = '#define VERSION "{version}"'
     },
+<<<<<<< HEAD
 
+=======
+
+>>>>>>> 66fcc00 (docs: restructure README and create comprehensive documentation)
     # CMake project version
     {
         path = "CMakeLists.txt",
@@ -72,7 +83,11 @@ version_files = [
         version_pattern = "(project\\([^)]+VERSION\\s+)([^\\s)]+)",
         version_replacement = "\\g<1>{version}"
     },
+<<<<<<< HEAD
 
+=======
+
+>>>>>>> 66fcc00 (docs: restructure README and create comprehensive documentation)
     # Makefile version
     {
         path = "Makefile",
@@ -96,7 +111,11 @@ version_files = [
         version_pattern = 'const Version = "([^"]+)"',
         version_replacement = 'const Version = "{version}"'
     },
+<<<<<<< HEAD
 
+=======
+
+>>>>>>> 66fcc00 (docs: restructure README and create comprehensive documentation)
     # Dockerfile for containerized Go app
     {
         path = "Dockerfile",
@@ -120,7 +139,11 @@ version_files = [
         version_pattern = "<version>([^<]+)</version>",
         version_replacement = "<version>{version}</version>"
     },
+<<<<<<< HEAD
 
+=======
+
+>>>>>>> 66fcc00 (docs: restructure README and create comprehensive documentation)
     # Java version constant
     {
         path = "src/main/java/com/example/Version.java",
@@ -144,7 +167,11 @@ version = "1.0.0"
 version_files = [
     # Main Cargo.toml (auto-detected)
     {path = "Cargo.toml"},
+<<<<<<< HEAD
 
+=======
+
+>>>>>>> 66fcc00 (docs: restructure README and create comprehensive documentation)
     # Version constant in source
     {
         path = "src/version.rs",
@@ -173,7 +200,11 @@ If you need additional version files, create `pumper.toml`:
 version_files = [
     # Main composer.json (auto-detected)
     {path = "composer.json", file_type = "json"},
+<<<<<<< HEAD
 
+=======
+
+>>>>>>> 66fcc00 (docs: restructure README and create comprehensive documentation)
     # PHP version constant
     {
         path = "src/Version.php",
@@ -193,6 +224,7 @@ version_files = [
     # Node.js services (auto-detected)
     { path = "services/api/package.json", file_type = "json" },
     { path = "services/worker/package.json", file_type = "json" },
+<<<<<<< HEAD
 
     # Rust libraries (auto-detected)
     { path = "libs/core/Cargo.toml", file_type = "toml" },
@@ -200,11 +232,24 @@ version_files = [
     # Go microservice
     {
         path = "services/gateway/version.go",
+=======
+
+    # Rust libraries (auto-detected)
+    { path = "libs/core/Cargo.toml", file_type = "toml" },
+
+    # Go microservice
+    {
+        path = "services/gateway/version.go",
+>>>>>>> 66fcc00 (docs: restructure README and create comprehensive documentation)
         file_type = "generic",
         version_pattern = 'const Version = "([^"]+)"',
         version_replacement = 'const Version = "{version}"'
     },
+<<<<<<< HEAD
 
+=======
+
+>>>>>>> 66fcc00 (docs: restructure README and create comprehensive documentation)
     # C++ library
     {
         path = "libs/native/version.h",
@@ -212,6 +257,7 @@ version_files = [
         version_pattern = '#define VERSION "([^"]+)"',
         version_replacement = '#define VERSION "{version}"'
     },
+<<<<<<< HEAD
 
     # Python service
     { path = "services/analytics/pyproject.toml", file_type = "toml" },
@@ -220,6 +266,16 @@ version_files = [
     {
         path = "k8s/deployment.yaml",
         file_type = "generic",
+=======
+
+    # Python service
+    { path = "services/analytics/pyproject.toml", file_type = "toml" },
+
+    # Deployment files
+    {
+        path = "k8s/deployment.yaml",
+        file_type = "generic",
+>>>>>>> 66fcc00 (docs: restructure README and create comprehensive documentation)
         version_pattern = '(image: myapp:)([^\\s]+)',
         version_replacement = '\\g<1>{version}'
     }
@@ -238,7 +294,11 @@ After configuring your version files, update your `.pre-commit-config.yaml`:
 
 ```yaml
 repos:
+<<<<<<< HEAD
   - repo: https://github.com/tatus9/pumper
+=======
+  - repo: https://github.com/tatus9/pumper
+>>>>>>> 66fcc00 (docs: restructure README and create comprehensive documentation)
     rev: v1.1.0  # Use the latest version
     hooks:
       - id: pumper
@@ -270,7 +330,11 @@ git commit -m "feat: add new authentication feature"
 # Automatically bumps minor version in project file
 
 # Custom config project (C/C++/Go/Java)
+<<<<<<< HEAD
 git commit -m "fix: resolve memory leak in parser"
+=======
+git commit -m "fix: resolve memory leak in parser"
+>>>>>>> 66fcc00 (docs: restructure README and create comprehensive documentation)
 # Automatically bumps patch version in all configured files
 
 # Multi-language project
@@ -311,4 +375,8 @@ pumper bump minor --config pumper.toml
 2. **Regex Testing**: Test your regex patterns with online tools before configuring
 3. **File Encoding**: Specify encoding if your files use non-UTF-8 encoding
 4. **Backup**: Always test your configuration with `--dry-run` first
+<<<<<<< HEAD
 5. **Git Staging**: Pumper automatically stages updated files for you
+=======
+5. **Git Staging**: Pumper automatically stages updated files for you
+>>>>>>> 66fcc00 (docs: restructure README and create comprehensive documentation)

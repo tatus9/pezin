@@ -1,9 +1,10 @@
 """Tests for the pre-commit hook."""
 
 import subprocess
+from pathlib import Path
+
 import tomli
 import tomli_w
-from pathlib import Path
 from typer.testing import CliRunner
 
 # from pumper.hooks.pre_commit import app
@@ -35,9 +36,18 @@ def test_simple_version_bump(tmp_path):
     # Test feature bump
     msg_file.write_text("feat: add new feature")
 
-    # Run hook
+    # Run hook with explicit config pointing to our test file
     runner = CliRunner()
-    result = runner.invoke(app, ["hook", str(msg_file)])
+    result = runner.invoke(
+        app,
+        [
+            "hook",
+            str(msg_file),
+            "--config",
+            str(version_file),
+            "--skip-amend-detection",
+        ],
+    )
     assert result.exit_code == 0, f"Hook failed: {result.stdout}"
 
     # Verify version bump
@@ -59,9 +69,18 @@ def test_no_version_bump(tmp_path):
     # Write chore commit
     msg_file.write_text("chore: update docs")
 
-    # Run hook
+    # Run hook with explicit config pointing to our test file
     runner = CliRunner()
-    result = runner.invoke(app, ["hook", str(msg_file)])
+    result = runner.invoke(
+        app,
+        [
+            "hook",
+            str(msg_file),
+            "--config",
+            str(version_file),
+            "--skip-amend-detection",
+        ],
+    )
     assert result.exit_code == 0, (
         f"Hook should succeed for chore commit: {result.stdout}"
     )
@@ -86,9 +105,18 @@ def test_prerelease_bump(tmp_path):
     # Write pre-release commit
     msg_file.write_text("feat: alpha feature\n\n[pre-release=alpha]")
 
-    # Run hook
+    # Run hook with explicit config pointing to our test file
     runner = CliRunner()
-    result = runner.invoke(app, ["hook", str(msg_file)])
+    result = runner.invoke(
+        app,
+        [
+            "hook",
+            str(msg_file),
+            "--config",
+            str(version_file),
+            "--skip-amend-detection",
+        ],
+    )
     assert result.exit_code == 0
 
     # Check version has alpha tag
@@ -129,11 +157,20 @@ def test_amend_commit_detection(tmp_path):
 
         # Test 1: Different message should not be detected as amend
         different_message = "feat: different feature"
-        assert not is_amend_commit(different_message)
+        assert not is_amend_commit(commit_message=different_message)
 
         # Test 2: Same message as HEAD should be detected as amend
         head_message = "feat: initial commit"
-        assert is_amend_commit(head_message)
+        assert is_amend_commit(commit_message=head_message)
+
+        # Test 3: Test prepare-commit-msg detection - amend case
+        assert is_amend_commit(commit_source="commit", commit_sha="abc123")
+
+        # Test 4: Test prepare-commit-msg detection - normal commit case
+        assert not is_amend_commit(commit_source="message")
+
+        # Test 5: Test prepare-commit-msg detection - no arguments (fallback)
+        assert not is_amend_commit()
 
         # Test 3: Empty repository case (create new repo)
         empty_repo = tmp_path / "empty_repo"
@@ -150,7 +187,7 @@ def test_amend_commit_detection(tmp_path):
 
         os.chdir(empty_repo)
         # No HEAD exists, should not be amend
-        assert not is_amend_commit("feat: first commit")
+        assert not is_amend_commit(commit_message="feat: first commit")
 
     finally:
         os.chdir(original_cwd)

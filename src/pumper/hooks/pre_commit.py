@@ -1,21 +1,30 @@
-"""Git pre-commit hook for version bumping."""
+"""Git commit-msg hook for version bumping (legacy/fallback mode).
+
+This hook is maintained for backward compatibility and as a fallback
+when the new prepare-commit-msg + post-commit hook system is not used.
+"""
 
 import os
+import subprocess
 import sys
 from pathlib import Path
-import subprocess
-import typer
-import tomli
-import tomli_w
 from typing import Optional
 
-from ..core.commit import ConventionalCommit, BumpType
-from ..core.version import Version, VersionBumpType
-from ..logging import setup_logging, get_logger
+import tomli
+import tomli_w
+import typer
+
+from ..cli.commands import read_config
+from ..core.commit import BumpType, ConventionalCommit
+from ..core.version import Version, VersionBumpType, VersionFileConfig, VersionManager
+from ..logging import get_logger, setup_logging
 
 # Set up centralized logging
 setup_logging()
 logger = get_logger()
+
+# Lock file to prevent conflicts with post-commit hook
+LOCK_FILE = ".pumper_post_commit_lock"
 
 
 def convert_bump_type(bump_type: BumpType) -> Optional[VersionBumpType]:
@@ -46,39 +55,46 @@ def get_repo_root() -> Path:
         raise ValueError("Not in a Git repository") from e
 
 
-def is_amend_commit(commit_message: str) -> bool:
-    """Check if the current commit is an amend operation."""
-    logger.info("=== Starting amend detection ===")
+def is_post_commit_hook_active(repo_root: Path) -> bool:
+    """Check if the post-commit hook is active to avoid conflicts."""
+    lock_file = repo_root / LOCK_FILE
+    return lock_file.exists()
 
+
+def is_amend_commit(
+    commit_source: Optional[str] = None,
+    commit_sha: Optional[str] = None,
+    commit_message: Optional[str] = None,
+) -> bool:
+    """Check if the current commit is an amend operation using prepare-commit-msg hook arguments.
+
+    Args:
+        commit_source: The source of the commit message (from prepare-commit-msg hook)
+        commit_sha: The SHA of the commit being amended (from prepare-commit-msg hook)
+        commit_message: The commit message content (for legacy compatibility)
+
+    Returns:
+        True if this is an amend operation, False otherwise
+    """
+    logger.debug("Starting amend detection")
+    logger.debug(f"Commit source: {commit_source}")
+    logger.debug(f"Commit SHA: {commit_sha}")
+
+    # Method 1: Use prepare-commit-msg hook arguments (most reliable)
+    if commit_source == "commit":
+        logger.info("Amend detected via prepare-commit-msg")
+        if commit_sha:
+            logger.debug(f"Amending commit: {commit_sha[:7]}")
+        return True
+
+    # Method 1.5: Check for rebase operations (should also be skipped)
+    if commit_source in ["squash", "merge"]:
+        logger.info(f"Git operation '{commit_source}' detected - skipping version bump")
+        return True
+
+    # Fallback methods for backward compatibility when hook arguments are not available
     try:
-        # Method 0: Check environment variables that might indicate an amend
-        git_editor = os.environ.get("GIT_EDITOR", "")
-        git_sequence_editor = os.environ.get("GIT_SEQUENCE_EDITOR", "")
-        git_reflog_action = os.environ.get("GIT_REFLOG_ACTION", "")
-
-        logger.info(f"GIT_EDITOR: {git_editor}")
-        logger.info(f"GIT_SEQUENCE_EDITOR: {git_sequence_editor}")
-        logger.info(f"GIT_REFLOG_ACTION: {git_reflog_action}")
-
-        if "amend" in git_reflog_action.lower():
-            logger.info("GIT_REFLOG_ACTION indicates amend - skipping version bump")
-            return True
-
-        # Check if HEAD commit exists at all
-        result = subprocess.run(
-            ["git", "rev-parse", "--verify", "HEAD"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-
-        if result.returncode != 0:
-            # No HEAD commit exists, so this can't be an amend
-            logger.info("No HEAD commit exists - not an amend")
-            return False
-
-        # Method 1: Check for ORIG_HEAD existence AND verify it matches current HEAD
-        # During amend, ORIG_HEAD points to the commit being amended (same as current HEAD)
+        # Method 2: Check for rebase operations in progress
         try:
             git_dir_result = subprocess.run(
                 ["git", "rev-parse", "--git-dir"],
@@ -88,66 +104,134 @@ def is_amend_commit(commit_message: str) -> bool:
             )
             git_dir = Path(git_dir_result.stdout.strip())
 
+            # Check for rebase directories
+            rebase_merge_dir = git_dir / "rebase-merge"
+            rebase_apply_dir = git_dir / "rebase-apply"
+
+            if rebase_merge_dir.exists() or rebase_apply_dir.exists():
+                logger.info("Git rebase operation in progress - skipping version bump")
+                return True
+
+        except subprocess.CalledProcessError:
+            pass
+
+        # Method 3: Check environment variables that might indicate an amend or rebase
+        git_reflog_action = os.environ.get("GIT_REFLOG_ACTION", "")
+
+        logger.debug(f"GIT_REFLOG_ACTION: {git_reflog_action}")
+
+        if (
+            "amend" in git_reflog_action.lower()
+            or "rebase" in git_reflog_action.lower()
+        ):
+            logger.info(
+                "GIT_REFLOG_ACTION indicates amend/rebase - skipping version bump"
+            )
+            return True
+
+        # Check if HEAD commit exists at all
+        head_result = subprocess.run(
+            ["git", "rev-parse", "--verify", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+
+        if head_result.returncode != 0:
+            # No HEAD commit exists, so this can't be an amend
+            logger.debug("No HEAD commit exists - not an amend")
+            return False
+
+        # Method 4: Check for ORIG_HEAD existence AND verify it matches current HEAD
+        # During amend, ORIG_HEAD points to the commit being amended (same as current HEAD)
+        # Only check this in a real Git repository context
+        try:
+            # Ensure we're in the correct Git repository context
+            current_head_sha = head_result.stdout.strip()
+
+            # Verify we can get the git directory relative to the current HEAD
+            try:
+                git_dir_result = subprocess.run(
+                    ["git", "rev-parse", "--git-dir"],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+                git_dir = Path(git_dir_result.stdout.strip())
+            except subprocess.CalledProcessError:
+                # If we can't get git directory, skip ORIG_HEAD check
+                logger.debug(
+                    "Cannot determine git directory - skipping ORIG_HEAD check"
+                )
+                return False
+
             orig_head_file = git_dir / "ORIG_HEAD"
-            logger.info(f"ORIG_HEAD file exists: {orig_head_file.exists()}")
+            logger.debug(f"ORIG_HEAD file exists: {orig_head_file.exists()}")
 
             if orig_head_file.exists():
                 # Read ORIG_HEAD content
                 orig_head_sha = orig_head_file.read_text().strip()
 
-                # Get current HEAD SHA
-                head_result = subprocess.run(
-                    ["git", "rev-parse", "HEAD"],
-                    capture_output=True,
-                    text=True,
-                    check=True,
-                )
-                current_head_sha = head_result.stdout.strip()
-
-                logger.info(f"ORIG_HEAD: {orig_head_sha}")
-                logger.info(f"Current HEAD: {current_head_sha}")
+                logger.debug(f"ORIG_HEAD: {orig_head_sha}")
+                logger.debug(f"Current HEAD: {current_head_sha}")
 
                 # During amend, ORIG_HEAD equals current HEAD
+                # But also verify this is a recent operation by checking timestamps
+                import time
+
+                orig_head_mtime = orig_head_file.stat().st_mtime
+                current_time = time.time()
+
+                # Only consider ORIG_HEAD if it was modified recently (within last 60 seconds)
+                if current_time - orig_head_mtime > 60:
+                    logger.debug("ORIG_HEAD is too old - likely not a current amend")
+                    return False
+
                 if orig_head_sha == current_head_sha:
-                    logger.info("✓ ORIG_HEAD matches current HEAD - AMEND DETECTED")
+                    logger.info(
+                        "ORIG_HEAD matches current HEAD and is recent - amend detected"
+                    )
                     return True
                 else:
-                    logger.info("✗ ORIG_HEAD != HEAD - not an amend")
+                    logger.debug("ORIG_HEAD != HEAD - not an amend")
 
         except (subprocess.CalledProcessError, FileNotFoundError, OSError) as e:
-            logger.info(f"Could not check ORIG_HEAD: {e}")
+            logger.debug(f"Could not check ORIG_HEAD: {e}")
 
-        # Method 2: Compare with HEAD commit message as fallback
-        result = subprocess.run(
-            ["git", "log", "-1", "--pretty=format:%s%n%n%b"],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        head_message = result.stdout.strip()
+        # Method 5: Compare with HEAD commit message as fallback (for legacy compatibility)
+        if commit_message:
+            result = subprocess.run(
+                ["git", "log", "-1", "--pretty=format:%s%n%n%b"],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            head_message = result.stdout.strip()
 
-        # Clean up the messages for comparison
-        # Remove Git comment lines (lines starting with #) and extra whitespace
-        def clean_commit_message(msg):
-            lines = msg.split("\n")
-            clean_lines = [line for line in lines if not line.strip().startswith("#")]
-            return "\n".join(clean_lines).strip()
+            # Clean up the messages for comparison
+            # Remove Git comment lines (lines starting with #) and extra whitespace
+            def clean_commit_message(msg):
+                lines = msg.split("\n")
+                clean_lines = [
+                    line for line in lines if not line.strip().startswith("#")
+                ]
+                return "\n".join(clean_lines).strip()
 
-        clean_commit_message = clean_commit_message(commit_message)
-        clean_head_message = head_message.strip()
+            clean_commit_message = clean_commit_message(commit_message)
+            clean_head_message = head_message.strip()
 
-        logger.info(f"Raw commit message: '{commit_message}'")
-        logger.info(f"Clean commit message: '{clean_commit_message}'")
-        logger.info(f"HEAD message: '{clean_head_message}'")
-        logger.info(f"Messages equal: {clean_commit_message == clean_head_message}")
+            logger.debug("Comparing commit messages")
+            logger.debug(
+                f"Messages equal: {clean_commit_message == clean_head_message}"
+            )
 
-        # If the commit message being processed is identical to HEAD's message,
-        # this is likely an amend operation
-        if clean_commit_message == clean_head_message:
-            logger.info("✓ Commit message matches HEAD - AMEND DETECTED")
-            return True
+            # If the commit message being processed is identical to HEAD's message,
+            # this is likely an amend operation
+            if clean_commit_message == clean_head_message:
+                logger.info("Commit message matches HEAD - amend detected")
+                return True
 
-        logger.info("✗ No amend indicators found - proceeding with version bump")
+        logger.debug("No amend indicators found - proceeding with version bump")
         return False
 
     except subprocess.CalledProcessError as e:
@@ -156,10 +240,31 @@ def is_amend_commit(commit_message: str) -> bool:
         return False
 
 
+def find_config_file(cwd: Path) -> Optional[Path]:
+    """Find the configuration file for pumper."""
+    potential_configs = [
+        cwd / "pyproject.toml",
+        cwd / "pumper.toml",
+        cwd / "setup.cfg",
+        cwd / "package.json",
+    ]
+
+    for config_file in potential_configs:
+        if config_file.exists():
+            logger.info(f"Found config file: {config_file}")
+            return config_file
+
+    logger.info("No config file found")
+    return None
+
+
 def update_version(
-    message: str, cwd: Path, version_file_path: Optional[Path] = None
+    message: str,
+    cwd: Path,
+    version_file_path: Optional[Path] = None,
+    config_file: Optional[Path] = None,
 ) -> Optional[str]:
-    """Update version based on commit message."""
+    """Update version based on commit message using VersionManager."""
     try:
         commit = ConventionalCommit.parse(message)
         logger.info(f"Commit type: {commit.type}")
@@ -169,6 +274,86 @@ def update_version(
         if version_bump_type is None:
             logger.info("No version bump needed")
             return None
+
+        # Find config file if not provided
+        if config_file is None:
+            config_file = find_config_file(cwd)
+            if config_file is None:
+                # Fallback to legacy behavior
+                config_file = cwd / "pyproject.toml"
+
+        # Read configuration
+        try:
+            config = read_config(config_file)
+        except Exception as e:
+            logger.warning(f"Failed to read config from {config_file}: {e}")
+            config = {}
+
+        # Create VersionManager
+        try:
+            if config and "pumper" in config and config["pumper"]:
+                # Only use pumper config if it has actual configuration
+                version_manager = VersionManager.from_config(config["pumper"])
+            elif version_file_path:
+                version_manager = VersionManager(
+                    [VersionFileConfig(path=version_file_path)]
+                )
+            else:
+                # Default to the explicitly provided config file
+                version_manager = VersionManager([VersionFileConfig(path=config_file)])
+
+            # Get current version
+            current_version = version_manager.get_primary_version()
+            if not current_version:
+                raise ValueError("No version found in configured files")
+
+            logger.info(f"Current version: {current_version}")
+
+            # Calculate new version
+            prerelease = commit.get_prerelease_label()
+            new_version = current_version.bump(version_bump_type, prerelease)
+            logger.info(f"Bumping to: {new_version}")
+
+            # Update all configured files
+            updated_files = version_manager.write_versions(new_version)
+            logger.info(f"Updated files: {updated_files}")
+
+            # Stage all updated files
+            for file_path in updated_files:
+                try:
+                    subprocess.run(
+                        ["git", "add", file_path], capture_output=True, check=False
+                    )
+                    logger.info(f"Staged file: {file_path}")
+                except Exception as e:
+                    logger.warning(f"Failed to stage {file_path}: {e}")
+
+            return str(new_version)
+
+        except Exception as e:
+            logger.error(f"Failed to use VersionManager: {e}")
+            # Fallback to legacy behavior
+            return update_version_legacy(message, cwd, version_file_path)
+
+    except Exception as e:
+        logger.error(f"Failed to update version: {e}")
+        raise
+
+
+def update_version_legacy(
+    message: str, cwd: Path, version_file_path: Optional[Path] = None
+) -> Optional[str]:
+    """Legacy version update function for backward compatibility."""
+    try:
+        commit = ConventionalCommit.parse(message)
+        logger.info(f"Commit type: {commit.type}")
+
+        bump_type = commit.get_bump_type()
+        version_bump_type = convert_bump_type(bump_type)
+        if version_bump_type is None:
+            logger.info("No version bump needed")
+            return None
+
         if version_file_path:
             version_file = version_file_path
         else:
@@ -208,60 +393,143 @@ def update_version(
 
 
 def main(
-    commit_msg_file: Path = typer.Argument(
-        ...,
-        help="Path to the commit message file",
+    commit_msg_file: Optional[Path] = typer.Argument(
+        None,
+        help="Path to the commit message file (auto-detected if not provided)",
         exists=True,
         file_okay=True,
         dir_okay=False,
         resolve_path=True,
     ),
+    commit_source: Optional[str] = typer.Argument(
+        None, help="Source of the commit message (from prepare-commit-msg hook)"
+    ),
+    commit_sha: Optional[str] = typer.Argument(
+        None, help="SHA of the commit being amended (from prepare-commit-msg hook)"
+    ),
+    config_file: Optional[Path] = typer.Option(
+        None,
+        "--config",
+        "-c",
+        help="Path to configuration file (auto-detected if not provided)",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        resolve_path=True,
+    ),
+    version_file: Optional[Path] = typer.Option(
+        None,
+        "--version-file",
+        "-v",
+        help="Path to version file (overrides config)",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        resolve_path=True,
+    ),
+    skip_amend_detection: bool = typer.Option(
+        False,
+        "--skip-amend-detection",
+        help="Skip amend detection (useful for testing)",
+        hidden=True,
+    ),
 ) -> None:
-    """Run the version bump pre-commit hook."""
+    """Run the version bump hook with flexible configuration support.
+
+    This hook can be used as either prepare-commit-msg or commit-msg hook.
+    When used as prepare-commit-msg, Git provides additional arguments
+    that enable reliable amend detection.
+
+    Configuration can be provided via:
+    1. --config option to specify config file path
+    2. Auto-detection of pyproject.toml, pumper.toml, etc.
+    3. --version-file option for simple single-file setups
+    """
     try:
-        logger.info("🚀 Pumper hook starting...")
+        logger.debug("Pumper commit-msg hook starting (legacy/fallback mode)...")
+
+        repo_root = get_repo_root()
+
+        # Check if post-commit hook is active to avoid conflicts
+        if is_post_commit_hook_active(repo_root):
+            logger.info(
+                "Post-commit hook is active - skipping commit-msg hook to avoid conflicts"
+            )
+            typer.echo("Post-commit hook handling version bumping")
+            sys.exit(0)
+
+        # Auto-detect commit message file if not provided
+        if commit_msg_file is None:
+            try:
+                git_dir = repo_root / ".git"
+
+                # Handle worktree case
+                if git_dir.is_file():
+                    with open(git_dir) as f:
+                        git_dir = Path(f.read().strip().split(": ")[1])
+
+                commit_msg_file = git_dir / "COMMIT_EDITMSG"
+                if not commit_msg_file.exists():
+                    logger.error("Could not find commit message file")
+                    sys.exit(1)
+
+                logger.debug(f"Auto-detected commit message file: {commit_msg_file}")
+            except Exception as e:
+                logger.error(f"Failed to auto-detect commit message file: {e}")
+                sys.exit(1)
+
+        # Log hook arguments for debugging
+        logger.debug(
+            f"Hook arguments: file={commit_msg_file}, source={commit_source}, sha={commit_sha}"
+        )
+        logger.debug(
+            f"Config options: config_file={config_file}, version_file={version_file}"
+        )
 
         # Read commit message
         message = commit_msg_file.read_text().strip()
         if not message:
-            logger.info("Empty commit message - exiting")
+            logger.debug("Empty commit message - exiting")
             sys.exit(0)
 
         # Log basic info
-        logger.info(f"Processing commit message: '{message}'")
-        logger.info(f"Current working directory: {os.getcwd()}")
-        logger.info(f"Commit message file: {commit_msg_file}")
+        logger.debug(f"Processing commit message: '{message}'")
+        logger.debug(f"Current working directory: {os.getcwd()}")
+        logger.debug(f"Commit message file: {commit_msg_file}")
 
-        # Log all environment variables for debugging
-        logger.info("=== Environment Variables ===")
+        # Log relevant environment variables for debugging
+        logger.debug("=== Environment Variables ===")
         for key in sorted(os.environ.keys()):
-            if "GIT" in key.upper() or key.upper() in ["PWD", "USER", "SHELL"]:
-                logger.info(f"ENV {key}={os.environ[key]}")
+            if "GIT" in key.upper() and key in ["GIT_REFLOG_ACTION", "GIT_EDITOR"]:
+                logger.debug(f"ENV {key}={os.environ[key]}")
 
-        # Check if this is an amend commit
-        if is_amend_commit(message):
-            logger.info("🛑 AMEND DETECTED - Skipping version bump")
+        # Check if this is an amend commit using hook arguments and fallback methods
+        if not skip_amend_detection and is_amend_commit(
+            commit_source, commit_sha, message
+        ):
+            logger.info("Amend detected - skipping version bump")
             typer.echo("Amend commit detected - skipping version bump")
             sys.exit(0)
 
-        logger.info("✅ Not an amend - proceeding with version bump")
+        logger.debug("Not an amend - proceeding with version bump")
 
-        # Update version
-        new_version = update_version(message, get_repo_root())
+        # Update version with flexible configuration
+        new_version = update_version(message, repo_root, version_file, config_file)
         if new_version:
-            logger.info(f"✨ Version bumped to {new_version}")
-            typer.echo(f"✨ Version bumped to {new_version}")
+            logger.info(f"Version bumped to {new_version} (legacy mode)")
+            typer.echo(f"Version bumped to {new_version} (files staged for commit)")
         else:
-            logger.info("No version bump needed")
+            logger.debug("No version bump needed")
+            typer.echo("No version bump needed")
 
-        logger.info("✅ Pumper hook completed successfully")
+        logger.debug("Pumper commit-msg hook completed successfully")
         sys.exit(0)
 
     except Exception as e:
-        logger.error(f"❌ Hook failed: {e}")
+        logger.error(f"Hook failed: {e}")
         import traceback
 
-        logger.error(f"Traceback: {traceback.format_exc()}")
+        logger.debug(f"Traceback: {traceback.format_exc()}")
         sys.exit(1)
 
 
