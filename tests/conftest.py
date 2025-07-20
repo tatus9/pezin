@@ -93,9 +93,9 @@ def pre_commit_repo(git_repo: Tuple[Path, subprocess.Popen]) -> Path:
     config.write_text("""repos:
 -   repo: local
     hooks:
-    -   id: pumper
-        name: Pumper Version Control
-        entry: pumper bump patch
+    -   id: pezin
+        name: Pezin Version Control
+        entry: pezin bump patch
         language: python
         pass_filenames: false
 """)

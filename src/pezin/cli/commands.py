@@ -1,4 +1,4 @@
-"""Command implementations for pumper CLI."""
+"""Command implementations for pezin CLI."""
 
 from datetime import datetime
 from pathlib import Path
@@ -50,31 +50,31 @@ def read_config(config_file: Path) -> Dict[str, Any]:
     config = read_toml_file(config_file)
     base_dir = config_file.parent
 
-    # Initialize pumper section if needed - check both locations
-    pumper_config = {}
-    if "pumper" in config:
-        pumper_config = config["pumper"]
-    elif "tool" in config and "pumper" in config["tool"]:
-        pumper_config = config["tool"]["pumper"]
+    # Initialize pezin section if needed - check both locations
+    pezin_config = {}
+    if "pezin" in config:
+        pezin_config = config["pezin"]
+    elif "tool" in config and "pezin" in config["tool"]:
+        pezin_config = config["tool"]["pezin"]
 
-    # Ensure pumper section exists in the expected location
-    config["pumper"] = pumper_config
+    # Ensure pezin section exists in the expected location
+    config["pezin"] = pezin_config
 
     # Make paths absolute
-    if config["pumper"]:
+    if config["pezin"]:
         # Handle legacy single version_file configuration
-        if "version_file" in config["pumper"]:
-            version_path = Path(config["pumper"]["version_file"])
+        if "version_file" in config["pezin"]:
+            version_path = Path(config["pezin"]["version_file"])
             if not version_path.is_absolute():
                 abs_path = resolve_path(version_path, base_dir)
                 logger.debug(
                     f"Making version_file path absolute: {version_path} -> {abs_path}"
                 )
-                config["pumper"]["version_file"] = str(abs_path)
+                config["pezin"]["version_file"] = str(abs_path)
 
         # Handle new multi-file version_files configuration
-        if "version_files" in config["pumper"]:
-            version_files = config["pumper"]["version_files"]
+        if "version_files" in config["pezin"]:
+            version_files = config["pezin"]["version_files"]
             for i, file_config in enumerate(version_files):
                 if isinstance(file_config, dict) and "path" in file_config:
                     file_path = Path(file_config["path"])
@@ -83,16 +83,16 @@ def read_config(config_file: Path) -> Dict[str, Any]:
                         logger.debug(
                             f"Making version_files[{i}] path absolute: {file_path} -> {abs_path}"
                         )
-                        config["pumper"]["version_files"][i]["path"] = str(abs_path)
+                        config["pezin"]["version_files"][i]["path"] = str(abs_path)
 
-        if "changelog_file" in config["pumper"]:
-            changelog_path = Path(config["pumper"]["changelog_file"])
+        if "changelog_file" in config["pezin"]:
+            changelog_path = Path(config["pezin"]["changelog_file"])
             if not changelog_path.is_absolute():
                 abs_path = resolve_path(changelog_path, base_dir)
                 logger.debug(
                     f"Making changelog_file path absolute: {changelog_path} -> {abs_path}"
                 )
-                config["pumper"]["changelog_file"] = str(abs_path)
+                config["pezin"]["changelog_file"] = str(abs_path)
 
     return config
 
@@ -105,17 +105,17 @@ def read_version_from_toml(file_path: Path) -> Optional[str]:
     # Try project section first
     if "project" in data and "version" in data["project"]:
         return get_version_data(data, "project", "Found version in [project] section: ")
-    # Try pumper section next
-    if "pumper" in data and "version" in data["pumper"]:
-        return get_version_data(data, "pumper", "Found version in [pumper] section: ")
-    # Try tool.pumper section (PEP 518)
+    # Try pezin section next
+    if "pezin" in data and "version" in data["pezin"]:
+        return get_version_data(data, "pezin", "Found version in [pezin] section: ")
+    # Try tool.pezin section (PEP 518)
     if (
         "tool" in data
-        and "pumper" in data["tool"]
-        and "version" in data["tool"]["pumper"]
+        and "pezin" in data["tool"]
+        and "version" in data["tool"]["pezin"]
     ):
-        version = data["tool"]["pumper"]["version"]
-        logger.debug(f"Found version in [tool.pumper] section: {version}")
+        version = data["tool"]["pezin"]["version"]
+        logger.debug(f"Found version in [tool.pezin] section: {version}")
         return version
 
     logger.debug("No version found in TOML file")
@@ -136,14 +136,14 @@ def write_toml_version(file_path: Path, new_version: str) -> None:
         # Update in existing location if found
         if "project" in data and "version" in data["project"]:
             data["project"]["version"] = new_version
-        elif "pumper" in data and "version" in data["pumper"]:
-            data["pumper"]["version"] = new_version
+        elif "pezin" in data and "version" in data["pezin"]:
+            data["pezin"]["version"] = new_version
         elif (
             "tool" in data
-            and "pumper" in data["tool"]
-            and "version" in data["tool"]["pumper"]
+            and "pezin" in data["tool"]
+            and "version" in data["tool"]["pezin"]
         ):
-            data["tool"]["pumper"]["version"] = new_version
+            data["tool"]["pezin"]["version"] = new_version
         else:
             # Default to project section
             if "project" not in data:
@@ -181,8 +181,8 @@ def get_version_info(
             return version, config_file
 
     # Check for external version file
-    if "pumper" in config and "version_file" in config["pumper"]:
-        version_file = Path(config["pumper"]["version_file"])
+    if "pezin" in config and "version_file" in config["pezin"]:
+        version_file = Path(config["pezin"]["version_file"])
         version_file = resolve_path(version_file, config_file.parent)
     else:
         version_file = config_file
@@ -211,12 +211,12 @@ def get_version_manager(
         config = read_config(config_file)
 
     # Check if we have new multi-file configuration
-    if config and "pumper" in config and "version_files" in config["pumper"]:
-        return VersionManager.from_config(config["pumper"])
+    if config and "pezin" in config and "version_files" in config["pezin"]:
+        return VersionManager.from_config(config["pezin"])
 
     # Create manager from legacy configuration
-    if config and "pumper" in config and "version_file" in config["pumper"]:
-        version_file = config["pumper"]["version_file"]
+    if config and "pezin" in config and "version_file" in config["pezin"]:
+        version_file = config["pezin"]["version_file"]
     else:
         version_file = str(config_file)
 
@@ -255,8 +255,8 @@ def write_version_to_file(
 
 def get_changelog_file(config: Dict[str, Any], default_file: Path) -> Path:
     """Get changelog file path from config or default."""
-    if "pumper" in config and "changelog_file" in config["pumper"]:
-        return Path(config["pumper"]["changelog_file"])
+    if "pezin" in config and "changelog_file" in config["pezin"]:
+        return Path(config["pezin"]["changelog_file"])
     return default_file
 
 
@@ -342,7 +342,7 @@ def bump_version(
 
         logger.debug(f"Bumping version with config: {config}")
 
-        if config and "pumper" in config and "version_files" in config["pumper"]:
+        if config and "pezin" in config and "version_files" in config["pezin"]:
             return prepare_new_version(config, bump_type, prerelease, dry_run)
         # Fallback to legacy single file logic
         current, version_file = get_version_info(config_file, config)
@@ -364,7 +364,7 @@ def bump_version(
 
 def prepare_new_version(config, bump_type, prerelease, dry_run):
     # Use new VersionManager system
-    version_manager = VersionManager.from_config(config["pumper"])
+    version_manager = VersionManager.from_config(config["pezin"])
 
     # Get current version from primary file
     current_version = version_manager.get_primary_version()

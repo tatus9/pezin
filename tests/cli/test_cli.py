@@ -1,14 +1,21 @@
 """CLI test suite."""
 
+import re
 from pathlib import Path
 
 import pytest
 import tomli
 from typer.testing import CliRunner
 
-from pumper.cli.main import app
+from pezin.cli.main import app
 
 # Test logging is handled by pytest configuration
+
+
+def strip_ansi_codes(text: str) -> str:
+    """Strip ANSI color codes from text to make tests CI-compatible."""
+    ansi_escape = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+    return ansi_escape.sub("", text)
 
 
 @pytest.fixture
@@ -60,8 +67,8 @@ version = "{version}"
             import json
 
             config_file.write_text(json.dumps({"name": name, "version": version}))
-        elif project_type == "pumper_toml":
-            config_file = project_dir / "pumper.toml"
+        elif project_type == "pezin_toml":
+            config_file = project_dir / "pezin.toml"
             config_file.write_text(f'''[project]
 name = "{name}"
 version = "{version}"
@@ -86,8 +93,10 @@ def test_bump_command_help(cli_runner):
     """Test bump command help output."""
     result = cli_runner.invoke(app, ["patch", "--help"])
     assert result.exit_code == 0
-    assert "--message" in result.output
-    assert "--pre" in result.output
+    # Strip ANSI codes to handle colored output in CI environments
+    clean_output = strip_ansi_codes(result.output)
+    assert "--message" in clean_output
+    assert "--pre" in clean_output
 
 
 def test_bump_command_basic(cli_runner, test_files, tmp_path):
@@ -120,12 +129,12 @@ def test_bump_command_config(cli_runner, test_files, tmp_path):
         test_dir = Path(td)
 
         # Create config file with version in it
-        config_file = test_dir / "pumper.toml"
+        config_file = test_dir / "pezin.toml"
         config_file.write_text("""
 [project]
 version = "0.1.0"
 
-[pumper]
+[pezin]
 changelog_file = "custom_changelog.md"
 """)
 
@@ -162,9 +171,9 @@ def test_bump_command_external_version(cli_runner, test_files, tmp_path):
         version_file.write_text("0.1.0")
 
         # Create config file referencing external version
-        config_file = test_dir / "pumper.toml"
+        config_file = test_dir / "pezin.toml"
         config_file.write_text("""
-[pumper]
+[pezin]
 version_file = "VERSION"
 changelog_file = "CHANGES.md"
 """)
@@ -254,7 +263,7 @@ def test_version_flag_clean_output(cli_runner):
     # Should only contain version line, no logging output
     lines = [line for line in result.output.strip().split("\n") if line.strip()]
     assert len(lines) >= 1
-    assert "pumper" in lines[-1]  # Last line should be pumper version
+    assert "pezin" in lines[-1]  # Last line should be pezin version
     # Should not contain logging messages
     assert "INFO" not in result.output
     assert "DEBUG" not in result.output
@@ -268,7 +277,7 @@ def test_version_command_clean_output(cli_runner):
     # Should only contain version line, no logging output
     lines = [line for line in result.output.strip().split("\n") if line.strip()]
     assert len(lines) >= 1
-    assert "pumper" in lines[-1]  # Last line should be pumper version
+    assert "pezin" in lines[-1]  # Last line should be pezin version
     # Should not contain logging messages
     assert "INFO" not in result.output
     assert "DEBUG" not in result.output
@@ -289,7 +298,7 @@ def test_project_version_detection_functions(test_project_files):
     """Test the project version detection functions work correctly."""
     import os
 
-    from pumper.cli.main import get_current_project_info, get_version_quietly
+    from pezin.cli.main import get_current_project_info, get_version_quietly
 
     # Test pyproject.toml detection
     project_dir, config_file = test_project_files("pyproject", "my-project", "2.1.0")
@@ -316,7 +325,7 @@ def test_project_version_detection_package_json(test_project_files):
     """Test version detection with package.json files."""
     import os
 
-    from pumper.cli.main import get_current_project_info, get_version_quietly
+    from pezin.cli.main import get_current_project_info, get_version_quietly
 
     # Test package.json detection
     project_dir, config_file = test_project_files(
@@ -345,7 +354,7 @@ def test_project_version_detection_no_config(tmp_path):
     """Test version detection when no config file exists."""
     import os
 
-    from pumper.cli.main import get_current_project_info
+    from pezin.cli.main import get_current_project_info
 
     # Create empty directory
     empty_dir = tmp_path / "empty"

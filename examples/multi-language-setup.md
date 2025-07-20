@@ -1,6 +1,6 @@
 # Multi-Language Version Management Examples
 
-This document demonstrates how to configure Pumper for different programming languages and project types.
+This document demonstrates how to configure Pezin for different programming languages and project types.
 
 ## Example 1: Python Project (Zero-Config)
 
@@ -11,7 +11,7 @@ name = "my-python-project"
 version = "1.0.0"
 ```
 
-*No additional configuration needed! Pumper automatically detects and updates pyproject.toml*
+*No additional configuration needed! Pezin automatically detects and updates pyproject.toml*
 
 ## Example 2: Node.js Project (Zero-Config)
 
@@ -23,7 +23,7 @@ version = "1.0.0"
 }
 ```
 
-*No additional configuration needed! Pumper automatically detects and updates package.json*
+*No additional configuration needed! Pezin automatically detects and updates package.json*
 
 ## Example 3: Full-Stack Project (Python + Node.js)
 
@@ -33,7 +33,7 @@ version = "1.0.0"
 name = "fullstack-app"
 version = "1.0.0"
 
-[tool.pumper]
+[tool.pezin]
 version_files = [
     # Python backend (auto-detected)
     {path = "pyproject.toml"},
@@ -61,8 +61,8 @@ version_files = [
 ## Example 4: C/C++ Project
 
 ```toml
-# pumper.toml (project root)
-[pumper]
+# pezin.toml (project root)
+[pezin]
 version_files = [
     # Version header
     {
@@ -101,8 +101,8 @@ version_files = [
 ## Example 5: Go Project
 
 ```toml
-# pumper.toml (project root)
-[pumper]
+# pezin.toml (project root)
+[pezin]
 version_files = [
     # Go version constant
     {
@@ -129,8 +129,8 @@ version_files = [
 ## Example 6: Java Maven Project
 
 ```toml
-# pumper.toml (project root)
-[pumper]
+# pezin.toml (project root)
+[pezin]
 version_files = [
     # Maven POM version
     {
@@ -163,7 +163,7 @@ name = "my-rust-project"
 version = "1.0.0"
 
 # If you need additional version files
-[tool.pumper]
+[tool.pezin]
 version_files = [
     # Main Cargo.toml (auto-detected)
     {path = "Cargo.toml"},
@@ -192,11 +192,11 @@ version_files = [
 }
 ```
 
-If you need additional version files, create `pumper.toml`:
+If you need additional version files, create `pezin.toml`:
 
 ```toml
-# pumper.toml (if additional files needed)
-[pumper]
+# pezin.toml (if additional files needed)
+[pezin]
 version_files = [
     # Main composer.json (auto-detected)
     {path = "composer.json", file_type = "json"},
@@ -218,8 +218,8 @@ version_files = [
 ## Example 9: Monorepo with Multiple Languages
 
 ```toml
-# pumper.toml (project root)
-[pumper]
+# pezin.toml (project root)
+[pezin]
 version_files = [
     # Node.js services (auto-detected)
     { path = "services/api/package.json", file_type = "json" },
@@ -281,7 +281,7 @@ version_files = [
     }
 ]
 
-[pumper.changelog]
+[pezin.changelog]
 enabled = true
 file_path = "CHANGELOG.md"
 ```
@@ -295,13 +295,13 @@ After configuring your version files, update your `.pre-commit-config.yaml`:
 ```yaml
 repos:
 <<<<<<< HEAD
-  - repo: https://github.com/tatus9/pumper
+  - repo: https://github.com/tatus9/pezin
 =======
-  - repo: https://github.com/tatus9/pumper
+  - repo: https://github.com/tatus9/pezin
 >>>>>>> 66fcc00 (docs: restructure README and create comprehensive documentation)
     rev: v1.1.0  # Use the latest version
     hooks:
-      - id: pumper
+      - id: pezin
 ```
 
 ### For Custom Config Projects (C/C++, Go, Java, etc.)
@@ -310,19 +310,19 @@ repos:
 repos:
   - repo: local
     hooks:
-      - id: pumper
-        name: Pumper Version Control
-        entry: python3 -m pumper.hooks.pre_commit
+      - id: pezin
+        name: Pezin Version Control
+        entry: python3 -m pezin.hooks.pre_commit
         language: system
         stages: [commit-msg]
         always_run: true
         pass_filenames: false
-        args: ["--config", "pumper.toml"]
+        args: ["--config", "pezin.toml"]
 ```
 
 ## Usage Examples
 
-Once configured, Pumper will automatically update all specified files when you make commits with conventional commit messages:
+Once configured, Pezin will automatically update all specified files when you make commits with conventional commit messages:
 
 ```bash
 # Zero-config project (Python/Node.js/Rust/PHP)
@@ -348,16 +348,16 @@ You can also manually bump versions using the CLI:
 
 ```bash
 # Bump minor version across all files
-pumper bump minor
+pezin bump minor
 
 # Bump patch version with pre-release label
-pumper bump patch --prerelease alpha
+pezin bump patch --prerelease alpha
 
 # Dry run to see what would change
-pumper bump major --dry-run
+pezin bump major --dry-run
 
 # Use specific config file
-pumper bump minor --config pumper.toml
+pezin bump minor --config pezin.toml
 ```
 
 ## Configuration Guidelines
@@ -371,12 +371,12 @@ pumper bump minor --config pumper.toml
 
 ### Tips
 
-1. **Version Consistency**: Pumper validates that all files have the same version before bumping
+1. **Version Consistency**: Pezin validates that all files have the same version before bumping
 2. **Regex Testing**: Test your regex patterns with online tools before configuring
 3. **File Encoding**: Specify encoding if your files use non-UTF-8 encoding
 4. **Backup**: Always test your configuration with `--dry-run` first
 <<<<<<< HEAD
-5. **Git Staging**: Pumper automatically stages updated files for you
+5. **Git Staging**: Pezin automatically stages updated files for you
 =======
-5. **Git Staging**: Pumper automatically stages updated files for you
+5. **Git Staging**: Pezin automatically stages updated files for you
 >>>>>>> 66fcc00 (docs: restructure README and create comprehensive documentation)

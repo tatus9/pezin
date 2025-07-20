@@ -164,7 +164,7 @@ def main(
 
 
 def commit_analysis(commit_msg_file, commit_source, commit_sha):
-    logger.debug("Pumper prepare-commit-msg hook starting...")
+    logger.debug("Pezin prepare-commit-msg hook starting...")
 
     # Log hook arguments for debugging
     logger.debug(

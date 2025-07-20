@@ -2,7 +2,7 @@
 
 ## Supported Version Files
 
-Pumper automatically detects and updates versions in:
+Pezin automatically detects and updates versions in:
 
 ### Python Projects (pyproject.toml)
 ```toml
@@ -22,12 +22,12 @@ version = "1.0.0"
 ### Custom Files
 Use the `--config` flag to specify custom version files.
 
-## Pumper Configuration
+## Pezin Configuration
 
 Customize behavior in your `pyproject.toml`:
 
 ```toml
-[tool.pumper]
+[tool.pezin]
 # Custom changelog file location
 changelog_file = "HISTORY.md"
 
@@ -55,5 +55,5 @@ version_pattern = 'version = "{version}"'
 
 ## Environment Variables
 
-- `PUMPER_DEBUG=1` - Enable verbose logging
-- `PUMPER_CONFIG` - Default config file path
+- `PEZIN_DEBUG=1` - Enable verbose logging
+- `PEZIN_CONFIG` - Default config file path

@@ -2,7 +2,7 @@ from datetime import datetime
 
 import pytest
 
-from pumper.core.changelog import (
+from pezin.core.changelog import (
     DEFAULT_SECTIONS,
     ChangelogConfig,
     ChangelogManager,

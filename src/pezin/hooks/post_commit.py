@@ -19,7 +19,7 @@ setup_logging()
 logger = get_logger()
 
 # Lock file to prevent infinite loops
-LOCK_FILE = ".pumper_post_commit_lock"
+LOCK_FILE = ".pezin_post_commit_lock"
 
 
 def convert_bump_type(bump_type: BumpType) -> Optional[VersionBumpType]:
@@ -59,7 +59,7 @@ def is_lock_active(repo_root: Path) -> bool:
 def create_lock(repo_root: Path) -> None:
     """Create a lock file to prevent infinite loops."""
     lock_file = repo_root / LOCK_FILE
-    lock_file.write_text(f"pumper post-commit lock created at {os.getpid()}")
+    lock_file.write_text(f"pezin post-commit lock created at {os.getpid()}")
     logger.debug(f"Created lock file: {lock_file}")
 
 
@@ -131,10 +131,10 @@ def get_last_commit_message() -> str:
 
 
 def find_config_file(cwd: Path) -> Optional[Path]:
-    """Find the configuration file for pumper."""
+    """Find the configuration file for pezin."""
     potential_configs = [
         cwd / "pyproject.toml",
-        cwd / "pumper.toml",
+        cwd / "pezin.toml",
         cwd / "setup.cfg",
         cwd / "package.json",
     ]
@@ -178,8 +178,8 @@ def update_version_and_amend(
 
         # Create VersionManager
         try:
-            if config and "pumper" in config and config["pumper"]:
-                version_manager = VersionManager.from_config(config["pumper"])
+            if config and "pezin" in config and config["pezin"]:
+                version_manager = VersionManager.from_config(config["pezin"])
             else:
                 version_manager = VersionManager([VersionFileConfig(path=config_file)])
 
@@ -301,7 +301,7 @@ def main(
 
 
 def core_flow(config_file, create_tag):
-    logger.debug("Pumper post-commit hook starting...")
+    logger.debug("Pezin post-commit hook starting...")
 
     repo_root = get_repo_root()
 
@@ -343,7 +343,7 @@ def core_flow(config_file, create_tag):
         # Always remove lock
         remove_lock(repo_root)
 
-    logger.debug("Pumper post-commit hook completed successfully")
+    logger.debug("Pezin post-commit hook completed successfully")
     sys.exit(0)
 
 

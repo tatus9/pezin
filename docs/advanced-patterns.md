@@ -1,13 +1,13 @@
 # Advanced Pattern System
 
-Pumper supports sophisticated version patterns with component-level control and template-based formatting.
+Pezin supports sophisticated version patterns with component-level control and template-based formatting.
 
 ## Custom Version Formats
 
 Control how versions are formatted using the `version_format` parameter with `{major}`, `{minor}`, and `{patch}` placeholders:
 
 ```toml
-[[pumper.version_files]]
+[[pezin.version_files]]
 path = "version.txt"
 file_type = "generic"
 version_pattern = 'Version: ([^\\s]+)'
@@ -29,7 +29,7 @@ Extract major, minor, and patch versions separately for ultimate flexibility:
 
 ```toml
 # C/C++ with separate version components
-[[pumper.version_files]]
+[[pezin.version_files]]
 path = "src/version.h"
 file_type = "generic"
 version_pattern = '#define VERSION_MAJOR (\d+)\s*\n#define VERSION_MINOR (\d+)\s*\n#define VERSION_PATCH (\d+)'
@@ -41,7 +41,7 @@ version_replacement = '''#define VERSION_MAJOR {major}
 version_format = "v{major}.{minor}.{patch}"
 
 # Android Gradle properties
-[[pumper.version_files]]
+[[pezin.version_files]]
 path = "gradle.properties"
 file_type = "generic"
 version_pattern = 'versionMajor=(\d+)\s*\nversionMinor=(\d+)\s*\nversionPatch=(\d+)'
@@ -51,7 +51,7 @@ versionPatch={patch}
 # Auto-generated: {major}.{minor}.{patch} built on {date}'''
 
 # .NET AssemblyInfo with 4-component versioning
-[[pumper.version_files]]
+[[pezin.version_files]]
 path = "Properties/AssemblyInfo.cs"
 file_type = "generic"
 version_pattern = '\[assembly: AssemblyVersion\("(\d+)\.(\d+)\.(\d+)"'
@@ -78,7 +78,7 @@ Rich set of template variables for flexible version formatting:
 
 ### Go Module with Multiple Formats
 ```toml
-[[pumper.version_files]]
+[[pezin.version_files]]
 path = "version.go"
 file_type = "generic"
 version_pattern = 'const Major = (\d+)\s*\nconst Minor = (\d+)\s*\nconst Patch = (\d+)'
@@ -92,7 +92,7 @@ const BuildInfo = "Built on {date} ({timestamp})"'''
 
 ### CMake Project with Documentation
 ```toml
-[[pumper.version_files]]
+[[pezin.version_files]]
 path = "CMakeLists.txt"
 file_type = "generic"
 version_pattern = 'set\(VERSION_MAJOR (\d+)\)\s*\nset\(VERSION_MINOR (\d+)\)\s*\nset\(VERSION_PATCH (\d+)\)'
@@ -104,7 +104,7 @@ set(VERSION_PATCH {patch})
 
 ### Docker Multi-Stage with Build Info
 ```toml
-[[pumper.version_files]]
+[[pezin.version_files]]
 path = "Dockerfile"
 file_type = "generic"
 version_pattern = 'ARG VERSION=([^\s]+)'

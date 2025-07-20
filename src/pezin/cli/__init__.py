@@ -1,4 +1,4 @@
-"""CLI package for pumper."""
+"""CLI package for pezin."""
 
 from .commands import bump_version, get_commits_since_last_tag, update_changelog
 from .main import app

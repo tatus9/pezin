@@ -38,7 +38,7 @@ jobs:
 
     - name: Run tests
       run: |
-        uv run pytest -v --cov=src/pumper --cov-report=xml --cov-report=term
+        uv run pytest -v --cov=src/pezin --cov-report=xml --cov-report=term
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4
@@ -65,8 +65,8 @@ jobs:
 
     - name: Test hook installation
       run: |
-        uv run pumper install-hooks
-        uv run pumper hooks-status
+        uv run pezin install-hooks
+        uv run pezin hooks-status
 
     - name: Test pre-commit hooks
       run: |

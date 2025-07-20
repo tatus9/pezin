@@ -55,18 +55,18 @@ def create_hook_script(hook_name: str, python_module: str, hooks_dir: Path) -> P
     # Create the hook script
     script_content = f"""#!/usr/bin/env python3
 \"\"\"
-Git {hook_name} hook managed by Pumper.
+Git {hook_name} hook managed by Pezin.
 This file is auto-generated. Do not edit manually.
 \"\"\"
 
 import sys
 from pathlib import Path
 
-# Add the pumper package to Python path if needed
+# Add the pezin package to Python path if needed
 try:
-    import pumper
+    import pezin
 except ImportError:
-    # Try to find pumper in common locations
+    # Try to find pezin in common locations
     current_dir = Path(__file__).parent
     repo_root = current_dir.parent.parent
     possible_paths = [
@@ -77,11 +77,11 @@ except ImportError:
     ]
 
     for path in possible_paths:
-        if (path / "pumper").exists():
+        if (path / "pezin").exists():
             sys.path.insert(0, str(path))
             break
     else:
-        print("Error: Could not find pumper package", file=sys.stderr)
+        print("Error: Could not find pezin package", file=sys.stderr)
         sys.exit(1)
 
 # Import and run the hook
@@ -128,7 +128,7 @@ def install_hooks(
         help="Use legacy commit-msg hook instead of prepare-commit-msg + post-commit",
     ),
 ) -> None:
-    """Install Pumper Git hooks for automatic version management.
+    """Install Pezin Git hooks for automatic version management.
 
     This installs hooks that automatically bump versions and create tags
     based on conventional commit messages.
@@ -140,11 +140,11 @@ def install_hooks(
     try:
         hooks_dir = get_git_hooks_dir()
 
-        typer.echo(f"Installing Pumper hooks in: {hooks_dir}")
+        typer.echo(f"Installing Pezin hooks in: {hooks_dir}")
 
         if legacy_mode:
             # Install legacy commit-msg hook
-            create_hook_script("commit-msg", "pumper.hooks.pre_commit", hooks_dir)
+            create_hook_script("commit-msg", "pezin.hooks.pre_commit", hooks_dir)
             typer.echo("✓ Installed commit-msg hook (legacy mode)")
             typer.echo("  → Version files will be staged for manual commit")
 
@@ -153,29 +153,29 @@ def install_hooks(
 
             # 1. Install prepare-commit-msg hook for amend detection
             create_hook_script(
-                "prepare-commit-msg", "pumper.hooks.prepare_commit_msg", hooks_dir
+                "prepare-commit-msg", "pezin.hooks.prepare_commit_msg", hooks_dir
             )
             typer.echo("✓ Installed prepare-commit-msg hook")
             typer.echo("  → Validates commit format and detects amends")
 
             # 2. Install post-commit hook for version bumping and tagging
-            create_hook_script("post-commit", "pumper.hooks.post_commit", hooks_dir)
+            create_hook_script("post-commit", "pezin.hooks.post_commit", hooks_dir)
             typer.echo("✓ Installed post-commit hook")
             typer.echo("  → Automatically amends commits with version changes")
             if create_tag:
                 typer.echo("  → Creates git tags for new versions")
 
-        # Create a marker file to indicate hooks are managed by Pumper
-        marker_file = hooks_dir / ".pumper-managed"
-        marker_content = f"""# Pumper-managed hooks
-# Created: {typer.get_app_dir("pumper")}
+        # Create a marker file to indicate hooks are managed by Pezin
+        marker_file = hooks_dir / ".pezin-managed"
+        marker_content = f"""# Pezin-managed hooks
+# Created: {typer.get_app_dir("pezin")}
 # Mode: {"legacy" if legacy_mode else "modern"}
 # Config: {config_file or "auto-detect"}
 # Create tags: {create_tag}
 """
         marker_file.write_text(marker_content)
 
-        typer.echo("\n🎉 Pumper hooks installed successfully!")
+        typer.echo("\n🎉 Pezin hooks installed successfully!")
 
         if not legacy_mode:
             typer.echo("\nHow it works:")
@@ -202,9 +202,9 @@ def install_hooks(
 
 
 def uninstall_hooks() -> None:
-    """Uninstall Pumper Git hooks.
+    """Uninstall Pezin Git hooks.
 
-    Removes all Pumper-managed Git hooks and cleans up related files.
+    Removes all Pezin-managed Git hooks and cleans up related files.
     """
     try:
         hooks_dir = get_git_hooks_dir()
@@ -216,36 +216,36 @@ def uninstall_hooks() -> None:
         for hook_name in hooks_to_remove:
             hook_path = hooks_dir / hook_name
             if hook_path.exists():
-                # Check if it's a Pumper-managed hook
+                # Check if it's a Pezin-managed hook
                 try:
                     content = hook_path.read_text()
-                    if "pumper" in content.lower() and "auto-generated" in content:
+                    if "pezin" in content.lower() and "auto-generated" in content:
                         hook_path.unlink()
                         removed.append(hook_name)
                         logger.info(f"Removed {hook_name} hook")
                     else:
-                        typer.echo(f"⚠️  Skipping {hook_name} (not managed by Pumper)")
+                        typer.echo(f"⚠️  Skipping {hook_name} (not managed by Pezin)")
                 except Exception as e:
                     logger.warning(f"Could not check {hook_name}: {e}")
 
         # Remove marker file
-        marker_file = hooks_dir / ".pumper-managed"
+        marker_file = hooks_dir / ".pezin-managed"
         if marker_file.exists():
             marker_file.unlink()
-            logger.info("Removed Pumper marker file")
+            logger.info("Removed Pezin marker file")
 
         # Remove lock file if present
         repo_root = get_repo_root()
-        lock_file = repo_root / ".pumper_post_commit_lock"
+        lock_file = repo_root / ".pezin_post_commit_lock"
         if lock_file.exists():
             lock_file.unlink()
             logger.info("Removed lock file")
 
         if removed:
             typer.echo(f"✓ Removed hooks: {', '.join(removed)}")
-            typer.echo("🧹 Pumper hooks uninstalled successfully!")
+            typer.echo("🧹 Pezin hooks uninstalled successfully!")
         else:
-            typer.echo("No Pumper hooks found to remove.")
+            typer.echo("No Pezin hooks found to remove.")
 
     except Exception as e:
         logger.error(f"Failed to uninstall hooks: {e}")
@@ -254,7 +254,7 @@ def uninstall_hooks() -> None:
 
 
 def status_hooks() -> None:
-    """Show status of Pumper Git hooks.
+    """Show status of Pezin Git hooks.
 
     Displays information about currently installed hooks and their configuration.
     """
@@ -274,26 +274,26 @@ def check_and_determine_status_hooks():
     typer.echo(f"Repository root: {repo_root}")
 
     # Check for marker file
-    marker_file = hooks_dir / ".pumper-managed"
+    marker_file = hooks_dir / ".pezin-managed"
     if marker_file.exists():
-        typer.echo("\n📋 Pumper hooks configuration:")
+        typer.echo("\n📋 Pezin hooks configuration:")
         typer.echo(marker_file.read_text())
     else:
-        typer.echo("\n⚠️  No Pumper marker file found")
+        typer.echo("\n⚠️  No Pezin marker file found")
 
     # Check individual hooks
     hooks_to_check = ["commit-msg", "prepare-commit-msg", "post-commit"]
     typer.echo("\n🔍 Hook status:")
 
-    pumper_hooks = []
+    pezin_hooks = []
     for hook_name in hooks_to_check:
         hook_path = hooks_dir / hook_name
         if hook_path.exists():
             try:
                 content = hook_path.read_text()
-                if "pumper" in content.lower():
-                    pumper_hooks.append(hook_name)
-                    typer.echo(f"  ✓ {hook_name} (Pumper-managed)")
+                if "pezin" in content.lower():
+                    pezin_hooks.append(hook_name)
+                    typer.echo(f"  ✓ {hook_name} (Pezin-managed)")
                 else:
                     typer.echo(f"  ⚠️  {hook_name} (external)")
             except Exception:
@@ -302,17 +302,17 @@ def check_and_determine_status_hooks():
             typer.echo(f"  ✗ {hook_name} (not installed)")
 
     # Check for lock file
-    lock_file = repo_root / ".pumper_post_commit_lock"
+    lock_file = repo_root / ".pezin_post_commit_lock"
     if lock_file.exists():
         typer.echo(f"\n🔒 Lock file present: {lock_file}")
         typer.echo("  (This may indicate a stuck process)")
 
     # Determine mode
-    if "prepare-commit-msg" in pumper_hooks and "post-commit" in pumper_hooks:
+    if "prepare-commit-msg" in pezin_hooks and "post-commit" in pezin_hooks:
         typer.echo("\n🚀 Mode: Modern (prepare-commit-msg + post-commit)")
-    elif "commit-msg" in pumper_hooks:
+    elif "commit-msg" in pezin_hooks:
         typer.echo("\n🔄 Mode: Legacy (commit-msg)")
-    elif pumper_hooks:
+    elif pezin_hooks:
         typer.echo("\n⚠️  Mode: Partial installation")
     else:
         typer.echo("\n❌ Mode: Not installed")

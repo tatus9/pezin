@@ -5,7 +5,7 @@ import tomli
 import tomli_w
 from packaging.version import InvalidVersion
 
-from pumper.core.version import (
+from pezin.core.version import (
     Version,
     VersionBumpType,
     VersionFileConfig,

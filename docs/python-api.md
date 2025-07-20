@@ -5,7 +5,7 @@
 ### Version Class
 
 ```python
-from pumper import Version
+from pezin import Version
 
 # Parse version strings
 version = Version.parse("1.2.3")
@@ -28,7 +28,7 @@ print(v1 < v2)  # True
 ### ConventionalCommit Class
 
 ```python
-from pumper import ConventionalCommit
+from pezin import ConventionalCommit
 
 # Parse commit messages
 commit = ConventionalCommit.parse("feat(api): add new endpoint")
@@ -65,7 +65,7 @@ prerelease = commit.get_prerelease_label()  # "beta"
 ### ChangelogManager Class
 
 ```python
-from pumper import ChangelogManager, ChangelogConfig
+from pezin import ChangelogManager, ChangelogConfig
 from pathlib import Path
 
 # Configure changelog
@@ -95,7 +95,7 @@ success = manager.update_changelog(
 ### Version Detection
 
 ```python
-from pumper.core.version import detect_version_file
+from pezin.core.version import detect_version_file
 from pathlib import Path
 
 # Auto-detect version file
@@ -103,14 +103,14 @@ version_file = detect_version_file(Path("."))
 print(version_file)  # Path to pyproject.toml or package.json
 
 # Read current version
-from pumper.utils import read_version
+from pezin.utils import read_version
 current_version = read_version(version_file)
 ```
 
 ### Git Operations
 
 ```python
-from pumper.utils import get_commits_since_tag
+from pezin.utils import get_commits_since_tag
 
 # Get commits since last tag
 commits = get_commits_since_tag()
@@ -121,7 +121,7 @@ for commit in commits:
 ## Complete Example
 
 ```python
-from pumper import Version, ConventionalCommit, ChangelogManager, ChangelogConfig
+from pezin import Version, ConventionalCommit, ChangelogManager, ChangelogConfig
 from pathlib import Path
 import subprocess
 
@@ -161,8 +161,8 @@ new_version = bump_version()
 ## Error Handling
 
 ```python
-from pumper import Version, ConventionalCommit
-from pumper.exceptions import ParseError
+from pezin import Version, ConventionalCommit
+from pezin.exceptions import ParseError
 
 try:
     version = Version.parse("invalid.version")

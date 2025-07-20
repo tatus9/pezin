@@ -1,6 +1,6 @@
 import pytest
 
-from pumper.core.commit import BumpType, CommitType, ConventionalCommit, FooterToken
+from pezin.core.commit import BumpType, CommitType, ConventionalCommit, FooterToken
 
 
 def test_basic_commit_parsing():

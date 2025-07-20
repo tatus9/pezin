@@ -1,10 +1,10 @@
 # Multi-Language Support
 
-Pumper supports version management for any programming language through a flexible file handler system. It can update version information in various file formats regardless of the programming language used.
+Pezin supports version management for any programming language through a flexible file handler system. It can update version information in various file formats regardless of the programming language used.
 
 ## File Handler Types
 
-Pumper uses three types of file handlers to update version information:
+Pezin uses three types of file handlers to update version information:
 
 ### 1. TOML Files (`TomlFileHandler`)
 - Handles `.toml` configuration files
@@ -23,7 +23,7 @@ Pumper uses three types of file handlers to update version information:
 
 ## Zero-Config Languages
 
-These languages have standardized project files that Pumper automatically detects:
+These languages have standardized project files that Pezin automatically detects:
 
 ### Python Projects
 ```toml
@@ -61,14 +61,14 @@ version = "1.0.0"
 
 ## Custom Configuration Languages
 
-For languages without standardized version files, use `pumper.toml` configuration:
+For languages without standardized version files, use `pezin.toml` configuration:
 
 ### C/C++, Go, Java, and Other Languages
 
-Create a `pumper.toml` file in your project root:
+Create a `pezin.toml` file in your project root:
 
 ```toml
-[pumper]
+[pezin]
 version_files = [
     # C/C++ header file
     {
@@ -120,7 +120,7 @@ version_files = [
 ]
 
 # Optional: Changelog configuration
-[pumper.changelog]
+[pezin.changelog]
 enabled = true
 file_path = "CHANGELOG.md"
 ```
@@ -137,7 +137,7 @@ For projects mixing different languages, configure from the main project file:
 name = "fullstack-app"
 version = "1.0.0"
 
-[tool.pumper]
+[tool.pezin]
 version_files = [
     # Python backend (auto-detected)
     { path = "pyproject.toml" },
@@ -158,8 +158,8 @@ version_files = [
 ### Monorepo with Multiple Languages
 
 ```toml
-# pumper.toml (project root)
-[pumper]
+# pezin.toml (project root)
+[pezin]
 version_files = [
     # Node.js services
     { path = "services/api/package.json", file_type = "json" },
@@ -193,18 +193,18 @@ version_files = [
     }
 ]
 
-[pumper.changelog]
+[pezin.changelog]
 enabled = true
 file_path = "CHANGELOG.md"
 ```
 
 ## Configuration Priority
 
-Pumper searches for configuration in this order:
+Pezin searches for configuration in this order:
 1. `--config` CLI argument (if provided)
-2. `pumper.toml` in current directory
-3. `[tool.pumper]` section in `pyproject.toml` (Python projects)
-4. `[pumper]` section in `pyproject.toml` (legacy)
+2. `pezin.toml` in current directory
+3. `[tool.pezin]` section in `pyproject.toml` (Python projects)
+4. `[pezin]` section in `pyproject.toml` (legacy)
 
 ## Common Patterns by Language/Tool
 

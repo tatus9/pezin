@@ -1,11 +1,11 @@
 # Quick Start
 
-Get up and running with Pumper in minutes.
+Get up and running with Pezin in minutes.
 
 ## Installation
 
 ```bash
-pip install pumper
+pip install pezin
 ```
 
 ## Setup Git Hook
@@ -17,13 +17,13 @@ Add to your `.pre-commit-config.yaml`:
 ```yaml
 repos:
 <<<<<<< HEAD
-  - repo: https://github.com/tatus9/pumper
+  - repo: https://github.com/tatus9/pezin
 =======
-  - repo: https://github.com/tatus9/pumper
+  - repo: https://github.com/tatus9/pezin
 >>>>>>> 66fcc00 (docs: restructure README and create comprehensive documentation)
     rev: v1.1.0  # Use the latest version
     hooks:
-      - id: pumper
+      - id: pezin
 ```
 
 **Option 2: Local Hook (For C/C++ and other non-Python projects)**
@@ -32,21 +32,21 @@ repos:
 repos:
   - repo: local
     hooks:
-      - id: pumper
-        name: Pumper Version Control
-        entry: python3 -m pumper.hooks.pre_commit
+      - id: pezin
+        name: Pezin Version Control
+        entry: python3 -m pezin.hooks.pre_commit
         language: system
         stages: [commit-msg]
         always_run: true
         pass_filenames: false
         # Optionally specify config file:
-        # args: ["--config", "pumper.toml"]
+        # args: ["--config", "pezin.toml"]
 ```
 
 Install the hooks:
 
 ```bash
-pip install pre-commit pumper
+pip install pre-commit pezin
 pre-commit install --hook-type commit-msg
 ```
 
@@ -64,7 +64,7 @@ git commit -m "fix: resolve login bug"           # 1.1.0 → 1.1.1
 git commit -m "feat!: redesign API"              # 1.1.1 → 2.0.0
 ```
 
-Your version files will be automatically updated! Pumper supports:
+Your version files will be automatically updated! Pezin supports:
 
 **🚀 Zero-Config Support (automatically detected):**
 <<<<<<< HEAD

@@ -1,4 +1,4 @@
-"""CLI entry point for pumper tool."""
+"""CLI entry point for pezin tool."""
 
 import contextlib
 import logging
@@ -25,13 +25,13 @@ if not is_version_command:
 else:
     # For version commands, suppress all logging output
     logging.getLogger().setLevel(logging.CRITICAL)
-    # Also suppress all pumper module loggers
+    # Also suppress all pezin module loggers
     for logger_name in [
-        "pumper",
-        "pumper.cli",
-        "pumper.cli.commands",
-        "pumper.core",
-        "pumper.hooks",
+        "pezin",
+        "pezin.cli",
+        "pezin.cli.commands",
+        "pezin.core",
+        "pezin.hooks",
     ]:
         logging.getLogger(logger_name).setLevel(logging.CRITICAL)
 
@@ -48,13 +48,13 @@ app = typer.Typer(
 console = Console()
 
 
-def get_pumper_version() -> str:
-    """Get the pumper version."""
+def get_pezin_version() -> str:
+    """Get the pezin version."""
     # Try to get version from package metadata first
     try:
         import importlib.metadata
 
-        return importlib.metadata.version("pumper")
+        return importlib.metadata.version("pezin")
     except importlib.metadata.PackageNotFoundError:
         # Fallback to reading from pyproject.toml in development
         try:
@@ -64,7 +64,7 @@ def get_pumper_version() -> str:
 
 
 def get_version_from_pyproject_dev():
-    project_root = Path(__file__).parents[3]  # src/pumper/cli/main.py -> project root
+    project_root = Path(__file__).parents[3]  # src/pezin/cli/main.py -> project root
     pyproject_path = project_root / "pyproject.toml"
     if not pyproject_path.exists():
         return "unknown"
@@ -85,17 +85,17 @@ def get_version_quietly(config_file: Path) -> Optional[str]:
             if "project" in data and "version" in data["project"]:
                 return data["project"]["version"]
 
-            # Try pumper section next
-            if "pumper" in data and "version" in data["pumper"]:
-                return data["pumper"]["version"]
+            # Try pezin section next
+            if "pezin" in data and "version" in data["pezin"]:
+                return data["pezin"]["version"]
 
-            # Try tool.pumper section
+            # Try tool.pezin section
             if (
                 "tool" in data
-                and "pumper" in data["tool"]
-                and "version" in data["tool"]["pumper"]
+                and "pezin" in data["tool"]
+                and "version" in data["tool"]["pezin"]
             ):
-                return data["tool"]["pumper"]["version"]
+                return data["tool"]["pezin"]["version"]
 
         elif config_file.suffix == ".json":
             import json
@@ -123,7 +123,7 @@ def get_current_project_info() -> Tuple[Optional[str], Optional[str]]:
             """Local version of find_config_file to avoid logging setup."""
             potential_configs = [
                 cwd / "pyproject.toml",
-                cwd / "pumper.toml",
+                cwd / "pezin.toml",
                 cwd / "setup.cfg",
                 cwd / "package.json",
             ]
@@ -161,10 +161,10 @@ def get_current_project_info() -> Tuple[Optional[str], Optional[str]]:
                     project_name = data["name"]
                 elif (
                     "tool" in data
-                    and "pumper" in data["tool"]
-                    and "name" in data["tool"]["pumper"]
+                    and "pezin" in data["tool"]
+                    and "name" in data["tool"]["pezin"]
                 ):
-                    project_name = data["tool"]["pumper"]["name"]
+                    project_name = data["tool"]["pezin"]["name"]
 
             elif config_file.suffix == ".json":  # package.json
                 with open(config_file, "r") as f:
@@ -193,36 +193,36 @@ def version_callback(value: bool) -> None:
     if value:
         # Try to get current project info first
         project_name, project_version = get_current_project_info()
-        pumper_version = get_pumper_version()
+        pezin_version = get_pezin_version()
 
-        # Show project version if we found one and it's not pumper itself
-        if project_version and project_name != "pumper":
+        # Show project version if we found one and it's not pezin itself
+        if project_version and project_name != "pezin":
             if project_name:
                 console.print(f"{project_name} {project_version}")
             else:
                 console.print(project_version)
 
-        # Always show pumper version
-        console.print(f"pumper {pumper_version}")
+        # Always show pezin version
+        console.print(f"pezin {pezin_version}")
         raise typer.Exit()
 
 
 @app.command(name="version")
 def version_command() -> None:
-    """Show pumper version and exit."""
+    """Show pezin version and exit."""
     # Try to get current project info first
     project_name, project_version = get_current_project_info()
-    pumper_version = get_pumper_version()
+    pezin_version = get_pezin_version()
 
-    # Show project version if we found one and it's not pumper itself
-    if project_version and project_name != "pumper":
+    # Show project version if we found one and it's not pezin itself
+    if project_version and project_name != "pezin":
         if project_name:
             console.print(f"{project_name} {project_version}")
         else:
             console.print(project_version)
 
-    # Always show pumper version
-    console.print(f"pumper {pumper_version}")
+    # Always show pezin version
+    console.print(f"pezin {pezin_version}")
 
 
 @app.callback()
@@ -648,19 +648,19 @@ def install_hooks_command(
         help="Use legacy commit-msg hook instead of prepare-commit-msg + post-commit",
     ),
 ) -> None:
-    """Install Pumper Git hooks for automatic version management."""
+    """Install Pezin Git hooks for automatic version management."""
     hooks.install_hooks(config_file, create_tag, legacy_mode)
 
 
 @app.command(name="uninstall-hooks")
 def uninstall_hooks_command() -> None:
-    """Uninstall Pumper Git hooks."""
+    """Uninstall Pezin Git hooks."""
     hooks.uninstall_hooks()
 
 
 @app.command(name="hooks-status")
 def hooks_status_command() -> None:
-    """Show status of Pumper Git hooks."""
+    """Show status of Pezin Git hooks."""
     hooks.status_hooks()
 
 

@@ -37,13 +37,13 @@
 
 **Symptoms:** Version bumps on `git commit --amend`
 **Check:** This should be automatically detected and skipped. If not:
-1. Check logs: `cat .git/pumper.log`
+1. Check logs: `cat .git/pezin.log`
 2. Verify amend detection is working
 3. Report as issue if persisting
 
 ### Rebase Operations Failing
 
-**Symptoms:** `git rebase -i` fails with pumper errors
+**Symptoms:** `git rebase -i` fails with pezin errors
 **Solutions:**
 1. Ensure only commit-msg hook is active:
    ```bash
@@ -60,20 +60,20 @@
 Enable detailed logging:
 
 ```bash
-export PUMPER_DEBUG=1
+export PEZIN_DEBUG=1
 git commit -m "feat: test commit"
 ```
 
 Check logs:
 ```bash
-cat .git/pumper.log
+cat .git/pezin.log
 ```
 
 ## Log Analysis
 
 ### Successful Operation
 ```
-INFO | 🚀 Pumper hook starting...
+INFO | 🚀 Pezin hook starting...
 INFO | Processing commit message: 'feat: add new feature'
 INFO | ✅ Not an amend - proceeding with version bump
 INFO | Current version: 1.0.0
@@ -116,17 +116,17 @@ ls -la .git/hooks/commit-msg
 
 ## Getting Help
 
-1. **Check logs first:** `cat .git/pumper.log`
-2. **Enable debug mode:** `export PUMPER_DEBUG=1`
+1. **Check logs first:** `cat .git/pezin.log`
+2. **Enable debug mode:** `export PEZIN_DEBUG=1`
 3. **Verify configuration:** Check version file format
-4. **Test manually:** `pumper hook --help`
+4. **Test manually:** `pezin hook --help`
 
 ## Reporting Issues
 
 When reporting issues, include:
-1. Pumper version: `pip show pumper`
+1. Pezin version: `pip show pezin`
 2. Git version: `git --version`
 3. Operating system
 4. Complete error message
-5. Debug logs from `.git/pumper.log`
+5. Debug logs from `.git/pezin.log`
 6. Sample commit that fails

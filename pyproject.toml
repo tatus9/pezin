@@ -5,7 +5,7 @@ requires = [
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "pumper"
+name = "pezin"
 version = "0.1.0"
 description = "Automated version bumping and changelog management using conventional commits"
 authors = [
@@ -24,7 +24,7 @@ dependencies = [
 ]
 
 [project.scripts]
-pumper = "pumper.cli.main:run"
+pezin = "pezin.cli.main:run"
 
 [dependency-groups]
 dev = [
@@ -42,8 +42,8 @@ where = [
     "src",
 ]
 include = [
-    "pumper",
-    "pumper.*",
+    "pezin",
+    "pezin.*",
 ]
 namespaces = true
 

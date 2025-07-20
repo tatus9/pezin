@@ -43,8 +43,8 @@ class TomlFileHandler(FileHandler):
         super().__init__(file_path)
         self.version_keys = version_keys or [
             "project.version",
-            "pumper.version",
-            "tool.pumper.version",
+            "pezin.version",
+            "tool.pezin.version",
         ]
         self._found_key = None
 

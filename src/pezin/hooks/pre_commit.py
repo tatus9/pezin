@@ -25,7 +25,7 @@ setup_logging()
 logger = get_logger()
 
 # Lock file to prevent conflicts with post-commit hook
-LOCK_FILE = ".pumper_post_commit_lock"
+LOCK_FILE = ".pezin_post_commit_lock"
 
 
 def convert_bump_type(bump_type: BumpType) -> Optional[VersionBumpType]:
@@ -147,7 +147,6 @@ def is_amend_commit(
             # Ensure we're in the correct Git repository context
             current_head_sha = head_result.stdout.strip()
 
-
             # Verify we can get the git directory relative to the current HEAD
             try:
                 git_dir_result = subprocess.run(
@@ -181,10 +180,8 @@ def is_amend_commit(
                 # But also verify this is a recent operation by checking timestamps
                 import time
 
-
                 orig_head_mtime = orig_head_file.stat().st_mtime
                 current_time = time.time()
-
 
                 # Only consider ORIG_HEAD if it was modified recently (within last 60 seconds)
                 if current_time - orig_head_mtime > 60:
@@ -248,10 +245,10 @@ def is_amend_commit(
 
 
 def find_config_file(cwd: Path) -> Optional[Path]:
-    """Find the configuration file for pumper."""
+    """Find the configuration file for pezin."""
     potential_configs = [
         cwd / "pyproject.toml",
-        cwd / "pumper.toml",
+        cwd / "pezin.toml",
         cwd / "setup.cfg",
         cwd / "package.json",
     ]
@@ -297,9 +294,9 @@ def update_version(
 
         # Create VersionManager
         try:
-            if config and "pumper" in config and config["pumper"]:
-                # Only use pumper config if it has actual configuration
-                version_manager = VersionManager.from_config(config["pumper"])
+            if config and "pezin" in config and config["pezin"]:
+                # Only use pezin config if it has actual configuration
+                version_manager = VersionManager.from_config(config["pezin"])
             elif version_file_path:
                 version_manager = VersionManager(
                     [VersionFileConfig(path=version_file_path)]
@@ -448,11 +445,11 @@ def main(
 
     Configuration can be provided via:
     1. --config option to specify config file path
-    2. Auto-detection of pyproject.toml, pumper.toml, etc.
+    2. Auto-detection of pyproject.toml, pezin.toml, etc.
     3. --version-file option for simple single-file setups
     """
     try:
-        logger.debug("Pumper commit-msg hook starting (legacy/fallback mode)...")
+        logger.debug("Pezin commit-msg hook starting (legacy/fallback mode)...")
 
         repo_root = get_repo_root()
 
@@ -524,7 +521,7 @@ def main(
             logger.debug("No version bump needed")
             typer.echo("No version bump needed")
 
-        logger.debug("Pumper commit-msg hook completed successfully")
+        logger.debug("Pezin commit-msg hook completed successfully")
         sys.exit(0)
 
     except Exception as e:

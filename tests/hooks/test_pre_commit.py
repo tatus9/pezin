@@ -7,9 +7,9 @@ import tomli
 import tomli_w
 from typer.testing import CliRunner
 
-# from pumper.hooks.pre_commit import app
-from pumper.cli.main import app
-from pumper.hooks.pre_commit import is_amend_commit
+# from pezin.hooks.pre_commit import app
+from pezin.cli.main import app
+from pezin.hooks.pre_commit import is_amend_commit
 
 
 def test_pre_commit_hook_installation(pre_commit_repo):

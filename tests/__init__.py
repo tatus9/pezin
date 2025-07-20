@@ -1,1 +1,1 @@
-"""Test suite for pumper package."""
+"""Test suite for pezin package."""

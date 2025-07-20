@@ -1,14 +1,14 @@
-# 🚀 Pumper
+# 🚀 Pezin
 
-[![CI](https://github.com/tatus9/pumper/workflows/CI/badge.svg)](https://github.com/tatus9/pumper/actions/workflows/ci.yml)
-[![PyPI version](https://badge.fury.io/py/pumper.svg)](https://badge.fury.io/py/pumper)
-[![Python versions](https://img.shields.io/pypi/pyversions/pumper.svg)](https://pypi.org/project/pumper/)
-[![License](https://img.shields.io/github/license/tatus9/pumper.svg)](https://github.com/tatus9/pumper/blob/main/LICENSE)
-[![Downloads](https://img.shields.io/pypi/dm/pumper.svg)](https://pypi.org/project/pumper/)
+[![CI](https://github.com/tatus9/pezin/workflows/CI/badge.svg)](https://github.com/tatus9/pezin/actions/workflows/ci.yml)
+[![PyPI version](https://img.shields.io/pypi/v/pezin.svg)](https://pypi.org/project/pezin/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://pypi.org/project/pezin/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Downloads](https://img.shields.io/pypi/dm/pezin.svg)](https://pypi.org/project/pezin/)
 
 A tool that care about versions, you could you manually or it could be used as a pre-commit hook to automate version bumping and changelog management using conventional commits.
 
-<img src="static/img/icon.png" alt="Pump it UP" style="width:50%; height:auto;">
+<img src="static/img/icon.png" alt="Bump version UP" style="width:50%; height:auto;">
 
 ## Features
 
@@ -29,13 +29,13 @@ A tool that care about versions, you could you manually or it could be used as a
 Install from PyPI:
 
 ```bash
-pip install pumper
+pip install pezin
 ```
 
 Or install the latest development version:
 
 ```bash
-pip install git+https://github.com/tatus9/pumper.git
+pip install git+https://github.com/tatus9/pezin.git
 ```
 
 ### Setup Git Hook
@@ -44,16 +44,16 @@ Add to your `.pre-commit-config.yaml`:
 
 ```yaml
 repos:
-  - repo: https://github.com/tatus9/pumper
-    rev: v1.1.0  # Use the latest version
+  - repo: https://github.com/tatus9/pezin
+    rev: v0.1.0  # Use the latest version
     hooks:
-      - id: pumper
+      - id: pezin
 ```
 
 Install the hooks:
 
 ```bash
-pip install pre-commit pumper
+pip install pre-commit pezin
 pre-commit install --hook-type commit-msg
 ```
 
@@ -87,17 +87,17 @@ Your version files will be automatically updated!
 
 ```bash
 # Check versions
-pumper -v                       # Shows current project + pumper versions
-pumper version                  # Same as above
+pezin -v                       # Shows current project + pezin versions
+pezin version                  # Same as above
 
 # Manual version bumping
-pumper minor                    # Bump minor version
-pumper patch --dry-run          # Preview changes
-pumper major --pre-release rc   # Pre-release version
+pezin minor                    # Bump minor version
+pezin patch --dry-run          # Preview changes
+pezin major --pre-release rc   # Pre-release version
 
 # Custom configuration
-pumper patch --config package.json
-pumper minor --skip-changelog
+pezin patch --config package.json
+pezin minor --skip-changelog
 
 # Multi-language project example
 # Updates pyproject.toml, package.json, version.h simultaneously
@@ -107,7 +107,7 @@ git commit -m "feat: add multi-platform support"
 ## Python API
 
 ```python
-from pumper import Version, ConventionalCommit, ChangelogManager
+from pezin import Version, ConventionalCommit, ChangelogManager
 
 # Parse and bump version
 version = Version.parse("1.2.3")
@@ -121,7 +121,7 @@ commit = ConventionalCommit.parse(
 print(commit.breaking)  # True
 
 # Update changelog
-config = ChangelogConfig(repo_url="https://github.com/tatus9/pumper.git")
+config = ChangelogConfig(repo_url="https://github.com/tatus9/pezin.git")
 manager = ChangelogManager(config)
 manager.update_changelog(
     Path("CHANGELOG.md"),
@@ -132,7 +132,7 @@ manager.update_changelog(
 
 ## Conventional Commits Guide
 
-Pumper follows the [Conventional Commits](https://www.conventionalcommits.org/) specification:
+Pezin follows the [Conventional Commits](https://www.conventionalcommits.org/) specification:
 
 ### Basic Format
 ```
@@ -192,7 +192,7 @@ Available tokens:
 - 🌍 **[Multi-Language Support](docs/multi-language-support.md)** - Python, Node.js, C++, Rust, and more
 - 🎨 **[Advanced Patterns](docs/advanced-patterns.md)** - Custom version formats and templates
 - 📋 **[Conventional Commits](docs/conventional-commits.md)** - Complete commit format guide
-- ⚙️ **[Configuration](docs/configuration.md)** - Customize Pumper behavior
+- ⚙️ **[Configuration](docs/configuration.md)** - Customize Pezin behavior
 - 💻 **[CLI Usage](docs/cli-usage.md)** - Manual version management
 - 🐍 **[Python API](docs/python-api.md)** - Programmatic usage
 - 🔧 **[Troubleshooting](docs/troubleshooting.md)** - Common issues and solutions

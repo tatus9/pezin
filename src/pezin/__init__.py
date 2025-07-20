@@ -6,7 +6,7 @@ Example:
     pre-commit install --hook-type commit-msg
 
     # Run manually
-    pumper bump minor
+    pezin bump minor
     ```
 """
 

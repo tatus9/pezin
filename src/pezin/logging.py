@@ -1,4 +1,4 @@
-"""Centralized logging configuration for Pumper using loguru."""
+"""Centralized logging configuration for Pezin using loguru."""
 
 import os
 import subprocess
@@ -10,7 +10,7 @@ from loguru import logger
 
 
 def setup_logging(log_level: Optional[str] = None) -> None:
-    """Configure loguru logging for Pumper.
+    """Configure loguru logging for Pezin.
 
     Args:
         log_level: Optional log level override. Defaults to LOG_LEVEL env var or INFO.
@@ -41,7 +41,7 @@ def logging_definitions(level):
         check=True,
     )
     git_dir = Path(git_dir_result.stdout.strip())
-    log_file = git_dir / "pumper.log"
+    log_file = git_dir / "pezin.log"
 
     # Add file handler with rotation
     logger.add(
@@ -59,7 +59,7 @@ def logging_definitions(level):
         format="{level} | {message}",
     )
 
-    logger.info(f"Pumper logging to: {log_file}")
+    logger.info(f"Pezin logging to: {log_file}")
 
 
 def get_logger():

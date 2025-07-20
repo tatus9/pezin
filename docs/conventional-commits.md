@@ -1,6 +1,6 @@
 # Conventional Commits Guide
 
-Pumper follows the [Conventional Commits](https://www.conventionalcommits.org/) specification.
+Pezin follows the [Conventional Commits](https://www.conventionalcommits.org/) specification.
 
 ## Basic Format
 

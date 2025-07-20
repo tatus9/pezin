@@ -6,14 +6,14 @@ from pathlib import Path
 import tomli
 import tomli_w
 
-from pumper.core.handlers import (
+from pezin.core.handlers import (
     COMMON_PATTERNS,
     FileHandlerFactory,
     GenericFileHandler,
     JsonFileHandler,
     TomlFileHandler,
 )
-from pumper.core.version import Version
+from pezin.core.version import Version
 
 
 class TestTomlFileHandler:
@@ -31,10 +31,10 @@ class TestTomlFileHandler:
         assert version is not None
         assert str(version) == "1.2.3"
 
-    def test_read_version_pumper_section(self, tmp_path):
-        """Test reading version from [pumper] section."""
+    def test_read_version_pezin_section(self, tmp_path):
+        """Test reading version from [pezin] section."""
         toml_file = tmp_path / "config.toml"
-        data = {"pumper": {"version": "2.1.0"}}
+        data = {"pezin": {"version": "2.1.0"}}
         toml_file.write_text(tomli_w.dumps(data))
 
         handler = TomlFileHandler(toml_file)
@@ -43,10 +43,10 @@ class TestTomlFileHandler:
         assert version is not None
         assert str(version) == "2.1.0"
 
-    def test_read_version_tool_pumper_section(self, tmp_path):
-        """Test reading version from [tool.pumper] section."""
+    def test_read_version_tool_pezin_section(self, tmp_path):
+        """Test reading version from [tool.pezin] section."""
         toml_file = tmp_path / "config.toml"
-        data = {"tool": {"pumper": {"version": "0.5.0"}}}
+        data = {"tool": {"pezin": {"version": "0.5.0"}}}
         toml_file.write_text(tomli_w.dumps(data))
 
         handler = TomlFileHandler(toml_file)
