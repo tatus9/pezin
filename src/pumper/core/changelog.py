@@ -111,8 +111,7 @@ class ChangelogManager:
         section_content = []
 
         for line in content.split("\n"):
-            match = self.VERSION_HEADER_PATTERN.match(line)
-            if match:
+            if match := self.VERSION_HEADER_PATTERN.match(line):
                 # Store previous version's content
                 if current_version:
                     sections[current_version] = current_lines + section_content
@@ -175,16 +174,11 @@ class ChangelogManager:
         sections: Dict[str, List[str]] = {}
 
         for commit in commits:
-            if commit.breaking:
-                section = "breaking"
-            else:
-                section = commit.type.value
-
+            section = "breaking" if commit.breaking else commit.type.value
             if section not in sections:
                 sections[section] = []
 
-            entry = self.format_commit(commit)
-            if entry:
+            if entry := self.format_commit(commit):
                 sections[section].append(entry)
 
         return sections
@@ -204,18 +198,15 @@ class ChangelogManager:
         if not self.config.repo_url:
             return []
 
-        links = []
         versions = list(sections.keys())
 
         # Filter out unreleased section and sort versions
         versions = [v for v in versions if v != self.config.unreleased_label]
         versions.insert(0, version)  # Add new version at the start
 
-        # Add unreleased comparison link
-        links.append(
+        links = [
             f"[{self.config.unreleased_label}]: {self.config.repo_url}/compare/v{version}...HEAD"
-        )
-
+        ]
         # Generate version comparison links
         for i, ver in enumerate(versions):
             if i == len(versions) - 1:
@@ -270,9 +261,7 @@ class ChangelogManager:
                 new_section.extend(changes[section_type])
                 new_section.append("")
 
-        # Generate version links
-        links = self.generate_version_links(version, sections)
-        if links:
+        if links := self.generate_version_links(version, sections):
             new_section.extend(["", *links])
 
         # Write updated content

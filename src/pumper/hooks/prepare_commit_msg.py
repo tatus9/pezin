@@ -1,5 +1,6 @@
 """Git prepare-commit-msg hook for reliable amend detection."""
 
+import contextlib
 import os
 import subprocess
 import sys
@@ -61,7 +62,7 @@ def is_amend_commit(
         return True
 
     # Method 3: Check for rebase operations in progress
-    try:
+    with contextlib.suppress(subprocess.CalledProcessError):
         git_dir_result = subprocess.run(
             ["git", "rev-parse", "--git-dir"],
             capture_output=True,
@@ -77,9 +78,6 @@ def is_amend_commit(
         if rebase_merge_dir.exists() or rebase_apply_dir.exists():
             logger.info("Git rebase operation in progress - skipping validation")
             return True
-
-    except subprocess.CalledProcessError:
-        pass
 
     # Method 4: Check environment variables that might indicate an amend or rebase
     git_reflog_action = os.environ.get("GIT_REFLOG_ACTION", "")
@@ -155,50 +153,7 @@ def main(
     The actual version bumping is handled by the post-commit hook.
     """
     try:
-        logger.debug("Pumper prepare-commit-msg hook starting...")
-
-        # Log hook arguments for debugging
-        logger.debug(
-            f"Hook arguments: file={commit_msg_file}, source={commit_source}, sha={commit_sha}"
-        )
-
-        # Check if we should skip this hook
-        if should_skip_hook(commit_source):
-            logger.info("Skipping prepare-commit-msg hook")
-            sys.exit(0)
-
-        # Check if this is an amend commit
-        if is_amend_commit(commit_source, commit_sha):
-            logger.info("Amend detected - skipping prepare-commit-msg validation")
-            sys.exit(0)
-
-        # Read commit message
-        message = commit_msg_file.read_text().strip()
-        if not message:
-            logger.debug("Empty commit message - exiting")
-            sys.exit(0)
-
-        # Log basic info
-        logger.debug(f"Processing commit message: '{message}'")
-        logger.debug(f"Current working directory: {os.getcwd()}")
-
-        # Log relevant environment variables for debugging
-        logger.debug("=== Environment Variables ===")
-        for key in sorted(os.environ.keys()):
-            if "GIT" in key.upper() and key in ["GIT_REFLOG_ACTION", "GIT_EDITOR"]:
-                logger.debug(f"ENV {key}={os.environ[key]}")
-
-        # Validate commit message format (optional - don't fail on invalid)
-        if validate_commit_message(message):
-            logger.debug("Commit message follows conventional format")
-        else:
-            logger.debug(
-                "Commit message does not follow conventional format - version bump may not occur"
-            )
-
-        logger.debug("Prepare-commit-msg hook completed successfully")
-        sys.exit(0)
-
+        commit_analysis(commit_msg_file, commit_source, commit_sha)
     except Exception as e:
         logger.error(f"Prepare-commit-msg hook failed: {e}")
         import traceback
@@ -206,6 +161,52 @@ def main(
         logger.debug(f"Traceback: {traceback.format_exc()}")
         # Don't fail the commit on hook errors
         sys.exit(0)
+
+
+def commit_analysis(commit_msg_file, commit_source, commit_sha):
+    logger.debug("Pumper prepare-commit-msg hook starting...")
+
+    # Log hook arguments for debugging
+    logger.debug(
+        f"Hook arguments: file={commit_msg_file}, source={commit_source}, sha={commit_sha}"
+    )
+
+    # Check if we should skip this hook
+    if should_skip_hook(commit_source):
+        logger.info("Skipping prepare-commit-msg hook")
+        sys.exit(0)
+
+    # Check if this is an amend commit
+    if is_amend_commit(commit_source, commit_sha):
+        logger.info("Amend detected - skipping prepare-commit-msg validation")
+        sys.exit(0)
+
+    # Read commit message
+    message = commit_msg_file.read_text().strip()
+    if not message:
+        logger.debug("Empty commit message - exiting")
+        sys.exit(0)
+
+    # Log basic info
+    logger.debug(f"Processing commit message: '{message}'")
+    logger.debug(f"Current working directory: {os.getcwd()}")
+
+    # Log relevant environment variables for debugging
+    logger.debug("=== Environment Variables ===")
+    for key in sorted(os.environ.keys()):
+        if "GIT" in key.upper() and key in ["GIT_REFLOG_ACTION", "GIT_EDITOR"]:
+            logger.debug(f"ENV {key}={os.environ[key]}")
+
+    # Validate commit message format (optional - don't fail on invalid)
+    if validate_commit_message(message):
+        logger.debug("Commit message follows conventional format")
+    else:
+        logger.debug(
+            "Commit message does not follow conventional format - version bump may not occur"
+        )
+
+    logger.debug("Prepare-commit-msg hook completed successfully")
+    sys.exit(0)
 
 
 if __name__ == "__main__":

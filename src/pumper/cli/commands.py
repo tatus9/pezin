@@ -44,7 +44,7 @@ def read_toml_file(file_path: Path) -> Dict[str, Any]:
 
 def read_config(config_file: Path) -> Dict[str, Any]:
     """Read configuration from a TOML file."""
-    if not config_file.suffix == ".toml":
+    if config_file.suffix != ".toml":
         return {}
 
     config = read_toml_file(config_file)
@@ -104,16 +104,10 @@ def read_version_from_toml(file_path: Path) -> Optional[str]:
 
     # Try project section first
     if "project" in data and "version" in data["project"]:
-        version = data["project"]["version"]
-        logger.debug(f"Found version in [project] section: {version}")
-        return version
-
+        return get_version_data(data, "project", "Found version in [project] section: ")
     # Try pumper section next
     if "pumper" in data and "version" in data["pumper"]:
-        version = data["pumper"]["version"]
-        logger.debug(f"Found version in [pumper] section: {version}")
-        return version
-
+        return get_version_data(data, "pumper", "Found version in [pumper] section: ")
     # Try tool.pumper section (PEP 518)
     if (
         "tool" in data
@@ -126,6 +120,12 @@ def read_version_from_toml(file_path: Path) -> Optional[str]:
 
     logger.debug("No version found in TOML file")
     return None
+
+
+def get_version_data(data, project_type, debug_message):
+    version = data[project_type]["version"]
+    logger.debug(f"{debug_message}{version}")
+    return version
 
 
 def write_toml_version(file_path: Path, new_version: str) -> None:
@@ -152,7 +152,7 @@ def write_toml_version(file_path: Path, new_version: str) -> None:
 
         file_path.write_text(tomli_w.dumps(data))
     except Exception as e:
-        raise ValueError(f"Failed to write TOML file: {e}")
+        raise ValueError(f"Failed to write TOML file: {e}") from e
 
 
 def read_raw_version(file_path: Path) -> Optional[str]:
@@ -213,14 +213,14 @@ def get_version_manager(
     # Check if we have new multi-file configuration
     if config and "pumper" in config and "version_files" in config["pumper"]:
         return VersionManager.from_config(config["pumper"])
-    else:
-        # Create manager from legacy configuration
-        if config and "pumper" in config and "version_file" in config["pumper"]:
-            version_file = config["pumper"]["version_file"]
-        else:
-            version_file = str(config_file)
 
-        return VersionManager([VersionFileConfig(path=version_file)])
+    # Create manager from legacy configuration
+    if config and "pumper" in config and "version_file" in config["pumper"]:
+        version_file = config["pumper"]["version_file"]
+    else:
+        version_file = str(config_file)
+
+    return VersionManager([VersionFileConfig(path=version_file)])
 
 
 def get_current_version(
@@ -292,38 +292,39 @@ def get_commits_since_last_tag() -> List[ConventionalCommit]:
 
     commits = []
     try:
-        # Check if in a git repo first
-        subprocess.run(
-            ["git", "rev-parse", "--git-dir"], capture_output=True, check=True
-        )
-
-        # Try to get last tag
-        result = subprocess.run(
-            ["git", "describe", "--tags", "--abbrev=0"],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-
-        # Build git log command
-        log_cmd = ["git", "log", "--pretty=format:%B%n<<>>%n"]
-        if result.returncode == 0:
-            log_cmd.extend([f"{result.stdout.strip()}..HEAD"])
-
-        # Get and parse commits
-        log_output = subprocess.run(log_cmd, capture_output=True, text=True, check=True)
-
-        for message in log_output.stdout.split("<<>>\n"):
-            if message.strip():
-                try:
-                    commits.append(ConventionalCommit.parse(message.strip()))
-                except ValueError:
-                    continue
-
+        get_commits_from_logs(subprocess, commits)
     except subprocess.CalledProcessError:
         logger.debug("Not in a git repository or no commits found")
 
     return commits
+
+
+def get_commits_from_logs(subprocess, commits):
+    # Check if in a git repo first
+    subprocess.run(["git", "rev-parse", "--git-dir"], capture_output=True, check=True)
+
+    # Try to get last tag
+    result = subprocess.run(
+        ["git", "describe", "--tags", "--abbrev=0"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    # Build git log command
+    log_cmd = ["git", "log", "--pretty=format:%B%n<<>>%n"]
+    if result.returncode == 0:
+        log_cmd.extend([f"{result.stdout.strip()}..HEAD"])
+
+    # Get and parse commits
+    log_output = subprocess.run(log_cmd, capture_output=True, text=True, check=True)
+
+    for message in log_output.stdout.split("<<>>\n"):
+        if message.strip():
+            try:
+                commits.append(ConventionalCommit.parse(message.strip()))
+            except ValueError:
+                continue
 
 
 def bump_version(
@@ -341,51 +342,52 @@ def bump_version(
 
         logger.debug(f"Bumping version with config: {config}")
 
-        # Check if we have new multi-file configuration
         if config and "pumper" in config and "version_files" in config["pumper"]:
-            # Use new VersionManager system
-            version_manager = VersionManager.from_config(config["pumper"])
+            return prepare_new_version(config, bump_type, prerelease, dry_run)
+        # Fallback to legacy single file logic
+        current, version_file = get_version_info(config_file, config)
+        version = Version.parse(current)
+        new_version = str(version.bump(bump_type, prerelease))
 
-            # Get current version from primary file
-            current_version = version_manager.get_primary_version()
-            if not current_version:
-                raise ValueError("No version found in configured files")
-
-            # Check version consistency across all files
-            if not version_manager.validate_version_consistency():
-                logger.warning("Version inconsistency detected across files")
-
-            # Calculate new version
-            new_version = current_version.bump(bump_type, prerelease)
-
-            if not dry_run:
-                updated_files = version_manager.write_versions(new_version)
-                logger.info(f"Version bumped: {current_version} -> {new_version}")
-                logger.info(f"Updated files: {', '.join(updated_files)}")
-            else:
-                versions = version_manager.read_versions()
-                logger.info(f"Dry run - Would bump: {current_version} -> {new_version}")
-                logger.info(f"Files to update: {', '.join(versions.keys())}")
-
-            return str(new_version)
-
+        if not dry_run:
+            write_version_to_file(version_file, new_version)
+            logger.info(f"Version bumped: {current} -> {new_version}")
         else:
-            # Fallback to legacy single file logic
-            current, version_file = get_version_info(config_file, config)
-            version = Version.parse(current)
-            new_version = str(version.bump(bump_type, prerelease))
+            logger.info(f"Dry run - Would bump: {current} -> {new_version}")
 
-            if not dry_run:
-                write_version_to_file(version_file, new_version)
-                logger.info(f"Version bumped: {current} -> {new_version}")
-            else:
-                logger.info(f"Dry run - Would bump: {current} -> {new_version}")
-
-            return new_version
+        return new_version
 
     except Exception as e:
         logger.error(f"Failed to bump version: {e}")
         return None
+
+
+def prepare_new_version(config, bump_type, prerelease, dry_run):
+    # Use new VersionManager system
+    version_manager = VersionManager.from_config(config["pumper"])
+
+    # Get current version from primary file
+    current_version = version_manager.get_primary_version()
+    if not current_version:
+        raise ValueError("No version found in configured files")
+
+    # Check version consistency across all files
+    if not version_manager.validate_version_consistency():
+        logger.warning("Version inconsistency detected across files")
+
+    # Calculate new version
+    new_version = current_version.bump(bump_type, prerelease)
+
+    if not dry_run:
+        updated_files = version_manager.write_versions(new_version)
+        logger.info(f"Version bumped: {current_version} -> {new_version}")
+        logger.info(f"Updated files: {', '.join(updated_files)}")
+    else:
+        versions = version_manager.read_versions()
+        logger.info(f"Dry run - Would bump: {current_version} -> {new_version}")
+        logger.info(f"Files to update: {', '.join(versions.keys())}")
+
+    return str(new_version)
 
 
 def update_changelog(

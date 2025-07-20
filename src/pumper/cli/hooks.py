@@ -30,12 +30,18 @@ def get_repo_root() -> Path:
 def get_git_hooks_dir() -> Path:
     """Get the Git hooks directory."""
     repo_root = get_repo_root()
-    git_dir = repo_root / ".git"
-
-    # Handle worktree case
-    if git_dir.is_file():
-        with open(git_dir) as f:
-            git_dir = Path(f.read().strip().split(": ")[1])
+    try:
+        git_dir_str = subprocess.check_output(
+            ["git", "-C", str(repo_root), "rev-parse", "--git-dir"], text=True
+        ).strip()
+        git_dir = (
+            Path(git_dir_str)
+            if Path(git_dir_str).is_absolute()
+            else (repo_root / git_dir_str).resolve()
+        )
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Failed to determine git directory: {e}")
+        raise typer.Exit(1) from e
 
     hooks_dir = git_dir / "hooks"
     hooks_dir.mkdir(exist_ok=True)
@@ -92,7 +98,9 @@ except Exception as e:
     hook_path.write_text(script_content)
 
     # Make the hook executable
-    hook_path.chmod(hook_path.stat().st_mode | stat.S_IEXEC)
+    hook_path.chmod(
+        hook_path.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH
+    )
 
     logger.info(f"Created {hook_name} hook: {hook_path}")
     return hook_path
@@ -183,10 +191,14 @@ def install_hooks(
                 "\nLegacy mode: Remember to re-commit after version files are staged."
             )
 
-    except Exception as e:
-        logger.error(f"Failed to install hooks: {e}")
+    except (OSError, subprocess.CalledProcessError) as e:
+        logger.error(f"Failed to install hooks: {e}", exc_info=True)
         typer.echo(f"❌ Error installing hooks: {e}", err=True)
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
+    except Exception as e:
+        logger.error(f"Unexpected error during hook installation: {e}", exc_info=True)
+        typer.echo(f"❌ Unexpected error installing hooks: {e}", err=True)
+        raise typer.Exit(1) from e
 
 
 def uninstall_hooks() -> None:
@@ -238,7 +250,7 @@ def uninstall_hooks() -> None:
     except Exception as e:
         logger.error(f"Failed to uninstall hooks: {e}")
         typer.echo(f"❌ Error uninstalling hooks: {e}", err=True)
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
 
 def status_hooks() -> None:
@@ -247,57 +259,60 @@ def status_hooks() -> None:
     Displays information about currently installed hooks and their configuration.
     """
     try:
-        hooks_dir = get_git_hooks_dir()
-        repo_root = get_repo_root()
-
-        typer.echo(f"Git hooks directory: {hooks_dir}")
-        typer.echo(f"Repository root: {repo_root}")
-
-        # Check for marker file
-        marker_file = hooks_dir / ".pumper-managed"
-        if marker_file.exists():
-            typer.echo("\n📋 Pumper hooks configuration:")
-            typer.echo(marker_file.read_text())
-        else:
-            typer.echo("\n⚠️  No Pumper marker file found")
-
-        # Check individual hooks
-        hooks_to_check = ["commit-msg", "prepare-commit-msg", "post-commit"]
-        typer.echo("\n🔍 Hook status:")
-
-        pumper_hooks = []
-        for hook_name in hooks_to_check:
-            hook_path = hooks_dir / hook_name
-            if hook_path.exists():
-                try:
-                    content = hook_path.read_text()
-                    if "pumper" in content.lower():
-                        pumper_hooks.append(hook_name)
-                        typer.echo(f"  ✓ {hook_name} (Pumper-managed)")
-                    else:
-                        typer.echo(f"  ⚠️  {hook_name} (external)")
-                except Exception:
-                    typer.echo(f"  ❓ {hook_name} (unreadable)")
-            else:
-                typer.echo(f"  ✗ {hook_name} (not installed)")
-
-        # Check for lock file
-        lock_file = repo_root / ".pumper_post_commit_lock"
-        if lock_file.exists():
-            typer.echo(f"\n🔒 Lock file present: {lock_file}")
-            typer.echo("  (This may indicate a stuck process)")
-
-        # Determine mode
-        if "prepare-commit-msg" in pumper_hooks and "post-commit" in pumper_hooks:
-            typer.echo("\n🚀 Mode: Modern (prepare-commit-msg + post-commit)")
-        elif "commit-msg" in pumper_hooks:
-            typer.echo("\n🔄 Mode: Legacy (commit-msg)")
-        elif pumper_hooks:
-            typer.echo("\n⚠️  Mode: Partial installation")
-        else:
-            typer.echo("\n❌ Mode: Not installed")
-
+        check_and_determine_status_hooks()
     except Exception as e:
         logger.error(f"Failed to check hook status: {e}")
         typer.echo(f"❌ Error checking hooks: {e}", err=True)
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
+
+
+def check_and_determine_status_hooks():
+    hooks_dir = get_git_hooks_dir()
+    repo_root = get_repo_root()
+
+    typer.echo(f"Git hooks directory: {hooks_dir}")
+    typer.echo(f"Repository root: {repo_root}")
+
+    # Check for marker file
+    marker_file = hooks_dir / ".pumper-managed"
+    if marker_file.exists():
+        typer.echo("\n📋 Pumper hooks configuration:")
+        typer.echo(marker_file.read_text())
+    else:
+        typer.echo("\n⚠️  No Pumper marker file found")
+
+    # Check individual hooks
+    hooks_to_check = ["commit-msg", "prepare-commit-msg", "post-commit"]
+    typer.echo("\n🔍 Hook status:")
+
+    pumper_hooks = []
+    for hook_name in hooks_to_check:
+        hook_path = hooks_dir / hook_name
+        if hook_path.exists():
+            try:
+                content = hook_path.read_text()
+                if "pumper" in content.lower():
+                    pumper_hooks.append(hook_name)
+                    typer.echo(f"  ✓ {hook_name} (Pumper-managed)")
+                else:
+                    typer.echo(f"  ⚠️  {hook_name} (external)")
+            except Exception:
+                typer.echo(f"  ❓ {hook_name} (unreadable)")
+        else:
+            typer.echo(f"  ✗ {hook_name} (not installed)")
+
+    # Check for lock file
+    lock_file = repo_root / ".pumper_post_commit_lock"
+    if lock_file.exists():
+        typer.echo(f"\n🔒 Lock file present: {lock_file}")
+        typer.echo("  (This may indicate a stuck process)")
+
+    # Determine mode
+    if "prepare-commit-msg" in pumper_hooks and "post-commit" in pumper_hooks:
+        typer.echo("\n🚀 Mode: Modern (prepare-commit-msg + post-commit)")
+    elif "commit-msg" in pumper_hooks:
+        typer.echo("\n🔄 Mode: Legacy (commit-msg)")
+    elif pumper_hooks:
+        typer.echo("\n⚠️  Mode: Partial installation")
+    else:
+        typer.echo("\n❌ Mode: Not installed")

@@ -4,6 +4,7 @@ This hook is maintained for backward compatibility and as a fallback
 when the new prepare-commit-msg + post-commit hook system is not used.
 """
 
+import contextlib
 import os
 import subprocess
 import sys
@@ -95,7 +96,7 @@ def is_amend_commit(
     # Fallback methods for backward compatibility when hook arguments are not available
     try:
         # Method 2: Check for rebase operations in progress
-        try:
+        with contextlib.suppress(subprocess.CalledProcessError):
             git_dir_result = subprocess.run(
                 ["git", "rev-parse", "--git-dir"],
                 capture_output=True,
@@ -111,9 +112,6 @@ def is_amend_commit(
             if rebase_merge_dir.exists() or rebase_apply_dir.exists():
                 logger.info("Git rebase operation in progress - skipping version bump")
                 return True
-
-        except subprocess.CalledProcessError:
-            pass
 
         # Method 3: Check environment variables that might indicate an amend or rebase
         git_reflog_action = os.environ.get("GIT_REFLOG_ACTION", "")
@@ -149,6 +147,7 @@ def is_amend_commit(
             # Ensure we're in the correct Git repository context
             current_head_sha = head_result.stdout.strip()
 
+
             # Verify we can get the git directory relative to the current HEAD
             try:
                 git_dir_result = subprocess.run(
@@ -160,6 +159,9 @@ def is_amend_commit(
                 git_dir = Path(git_dir_result.stdout.strip())
             except subprocess.CalledProcessError:
                 # If we can't get git directory, skip ORIG_HEAD check
+                logger.debug(
+                    "Cannot determine git directory - skipping ORIG_HEAD check"
+                )
                 logger.debug(
                     "Cannot determine git directory - skipping ORIG_HEAD check"
                 )
@@ -179,8 +181,10 @@ def is_amend_commit(
                 # But also verify this is a recent operation by checking timestamps
                 import time
 
+
                 orig_head_mtime = orig_head_file.stat().st_mtime
                 current_time = time.time()
+
 
                 # Only consider ORIG_HEAD if it was modified recently (within last 60 seconds)
                 if current_time - orig_head_mtime > 60:
@@ -191,11 +195,14 @@ def is_amend_commit(
                     logger.info(
                         "ORIG_HEAD matches current HEAD and is recent - amend detected"
                     )
+                    logger.info(
+                        "ORIG_HEAD matches current HEAD and is recent - amend detected"
+                    )
                     return True
                 else:
                     logger.debug("ORIG_HEAD != HEAD - not an amend")
 
-        except (subprocess.CalledProcessError, FileNotFoundError, OSError) as e:
+        except (subprocess.CalledProcessError, OSError) as e:
             logger.debug(f"Could not check ORIG_HEAD: {e}")
 
         # Method 5: Compare with HEAD commit message as fallback (for legacy compatibility)
@@ -277,8 +284,7 @@ def update_version(
 
         # Find config file if not provided
         if config_file is None:
-            config_file = find_config_file(cwd)
-            if config_file is None:
+            if (config_file := find_config_file(cwd)) is None:
                 # Fallback to legacy behavior
                 config_file = cwd / "pyproject.toml"
 
@@ -452,12 +458,10 @@ def main(
 
         # Check if post-commit hook is active to avoid conflicts
         if is_post_commit_hook_active(repo_root):
-            logger.info(
-                "Post-commit hook is active - skipping commit-msg hook to avoid conflicts"
+            show_status(
+                "Post-commit hook is active - skipping commit-msg hook to avoid conflicts",
+                "Post-commit hook handling version bumping",
             )
-            typer.echo("Post-commit hook handling version bumping")
-            sys.exit(0)
-
         # Auto-detect commit message file if not provided
         if commit_msg_file is None:
             try:
@@ -507,15 +511,13 @@ def main(
         if not skip_amend_detection and is_amend_commit(
             commit_source, commit_sha, message
         ):
-            logger.info("Amend detected - skipping version bump")
-            typer.echo("Amend commit detected - skipping version bump")
-            sys.exit(0)
-
+            show_status(
+                "Amend detected - skipping version bump",
+                "Amend commit detected - skipping version bump",
+            )
         logger.debug("Not an amend - proceeding with version bump")
 
-        # Update version with flexible configuration
-        new_version = update_version(message, repo_root, version_file, config_file)
-        if new_version:
+        if new_version := update_version(message, repo_root, version_file, config_file):
             logger.info(f"Version bumped to {new_version} (legacy mode)")
             typer.echo(f"Version bumped to {new_version} (files staged for commit)")
         else:
@@ -531,6 +533,12 @@ def main(
 
         logger.debug(f"Traceback: {traceback.format_exc()}")
         sys.exit(1)
+
+
+def show_status(log_message, cli_message):
+    logger.info(log_message)
+    typer.echo(cli_message)
+    sys.exit(0)
 
 
 if __name__ == "__main__":

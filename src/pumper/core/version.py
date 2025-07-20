@@ -170,19 +170,22 @@ class ConventionalCommit:
             if section:
                 for match in self.FOOTER_TOKEN_PATTERN.finditer(section):
                     key = match.group("key")
-                    value = match.group("value")
-                    if value:  # If key=value format
+                    if value := match.group("value"):
                         tokens.append(self.FooterToken(key, value))
-                    else:  # If standalone token
+                    else:
                         tokens.append(self.FooterToken(key))
         return tokens
 
     def get_prerelease_label(self) -> Optional[str]:
         """Extract pre-release label from commit footer."""
-        for token in self.get_footer_tokens():
-            if token.key == "pre-release" and token.value in ["alpha", "beta", "rc"]:
-                return token.value
-        return None
+        return next(
+            (
+                token.value
+                for token in self.get_footer_tokens()
+                if token.key == "pre-release" and token.value in ["alpha", "beta", "rc"]
+            ),
+            None,
+        )
 
 
 class Version:
@@ -216,37 +219,8 @@ class Version:
         """Initialize from a version string (original behavior)."""
         # Extract semantic version core using regex
         version_pattern = r"(?:^|[^\d])(\d+)\.(\d+)\.(\d+)(?:-([a-zA-Z0-9\-]+))?(?:\+([a-zA-Z0-9\-\.]+))?(?:[^\d]|$)"
-        match = re.search(version_pattern, version_string)
-
-        if match:
-            major, minor, patch, prerelease, build = match.groups()
-
-            # Build clean semantic version
-            clean_version = f"{major}.{minor}.{patch}"
-            if prerelease:
-                clean_version += f"-{prerelease}"
-            if build:
-                clean_version += f"+{build}"
-
-            self._version = PackagingVersion(clean_version)
-
-            # Create format template based on original string
-            prefix = version_string[: match.start(1)]
-            suffix = version_string[match.end(3) :]
-
-            if build:
-                suffix = version_string[match.end(5) :]
-            elif prerelease:
-                suffix = version_string[match.end(4) :]
-
-            format_template = f"{prefix}{{major}}.{{minor}}.{{patch}}"
-            if prerelease:
-                format_template += "-{prerelease}"
-            if build:
-                format_template += "+{build}"
-            format_template += suffix
-
-            self._original_format = format_template if (prefix or suffix) else None
+        if match := re.search(version_pattern, version_string):
+            self._define_version_original_format(match, version_string)
         else:
             # Fallback to old behavior for simple cases
             clean_version = version_string.lstrip("vV")
@@ -256,6 +230,36 @@ class Version:
             self._original_format = (
                 prefix + "{major}.{minor}.{patch}" if prefix else None
             )
+
+    def _define_version_original_format(self, match, version_string):
+        major, minor, patch, prerelease, build = match.groups()
+
+        # Build clean semantic version
+        clean_version = f"{major}.{minor}.{patch}"
+        if prerelease:
+            clean_version += f"-{prerelease}"
+        if build:
+            clean_version += f"+{build}"
+
+        self._version = PackagingVersion(clean_version)
+
+        # Create format template based on original string
+        prefix = version_string[: match.start(1)]
+        suffix = version_string[match.end(3) :]
+
+        if build:
+            suffix = version_string[match.end(5) :]
+        elif prerelease:
+            suffix = version_string[match.end(4) :]
+
+        format_template = f"{prefix}{{major}}.{{minor}}.{{patch}}"
+        if prerelease:
+            format_template += "-{prerelease}"
+        if build:
+            format_template += "+{build}"
+        format_template += suffix
+
+        self._original_format = format_template if (prefix or suffix) else None
 
     def _init_from_components(
         self,
@@ -296,17 +300,15 @@ class Version:
     def prerelease(self) -> Optional[str]:
         """Pre-release identifier if any."""
         if self._version.pre:
-            # Map PEP 440 pre-release types to SemVer format
-            pre_type = {"a": "alpha", "b": "beta", "rc": "rc"}.get(
+            return {"a": "alpha", "b": "beta", "rc": "rc"}.get(
                 self._version.pre[0], self._version.pre[0]
             )
-            return pre_type
         return None
 
     @property
     def build(self) -> Optional[str]:
         """Build metadata if any."""
-        return self._version.local if self._version.local else None
+        return self._version.local or None
 
     def format_with_template(self, template: str) -> str:
         """Format version using template with placeholders like {version}, {major}, {date}."""
@@ -421,9 +423,9 @@ class Version:
         version = f"{self.major}.{self.minor}.{self.patch}"
 
         if self._version.pre:
-            # Convert PEP 440 pre-release to SemVer format
-            pre_type = {"a": "alpha", "b": "beta", "rc": "rc"}.get(self._version.pre[0])
-            if pre_type:
+            if pre_type := {"a": "alpha", "b": "beta", "rc": "rc"}.get(
+                self._version.pre[0]
+            ):
                 version += f"-{pre_type}"
 
         if self.build:
@@ -555,9 +557,7 @@ class VersionManager:
         if not self.config_files:
             return None
 
-        primary_path = str(self.config_files[0].path)
-        handler = self._handlers.get(primary_path)
-        if handler:
+        if handler := self._handlers.get(str(self.config_files[0].path)):
             return handler.read_version()
         return None
 

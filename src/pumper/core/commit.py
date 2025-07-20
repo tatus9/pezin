@@ -34,8 +34,8 @@ class CommitType(str, Enum):
         """Create from string value."""
         try:
             return cls(value.lower())
-        except ValueError:
-            raise ValueError(f"Invalid commit type: {value}")
+        except ValueError as e:
+            raise ValueError(f"Invalid commit type: {value}") from e
 
 
 @dataclass
@@ -95,21 +95,16 @@ class ConventionalCommit:
         header_lines = header.split("\n")
         first_line = header_lines[0].strip()
 
-        # Parse header (first line only)
-        if match := cls.HEADER_PATTERN.match(first_line):
-            commit_type = CommitType.from_str(match.group("type"))
-            scope = match.group("scope")
-            breaking = bool(match.group("breaking"))
-            description = match.group("description")
-        else:
+        if not (match := cls.HEADER_PATTERN.match(first_line)):
             raise ValueError("Invalid commit header format")
 
+        commit_type = CommitType.from_str(match.group("type"))
+        scope = match.group("scope")
+        breaking = bool(match.group("breaking"))
+        description = match.group("description")
         # Move BREAKING CHANGE from body to footer if needed
         if body and "BREAKING CHANGE:" in body:
-            if footer:
-                footer = f"{body}\n\n{footer}"
-            else:
-                footer = body
+            footer = f"{body}\n\n{footer}" if footer else body
             body = None
             breaking = True
         elif footer and "BREAKING CHANGE:" in footer:
@@ -137,11 +132,16 @@ class ConventionalCommit:
 
     def get_prerelease_label(self) -> Optional[str]:
         """Extract pre-release label from commit footer."""
-        for token in self.get_footer_tokens():
-            if token.key == "pre-release" and token.value:
-                if token.value in ["alpha", "beta", "rc"]:
-                    return token.value
-        return None
+        return next(
+            (
+                token.value
+                for token in self.get_footer_tokens()
+                if token.key == "pre-release"
+                and token.value
+                and token.value in ["alpha", "beta", "rc"]
+            ),
+            None,
+        )
 
     def get_bump_type(self) -> BumpType:
         """Determine version bump type from commit.

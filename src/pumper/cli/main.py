@@ -1,5 +1,6 @@
 """CLI entry point for pumper tool."""
 
+import contextlib
 import logging
 import subprocess
 
@@ -57,19 +58,20 @@ def get_pumper_version() -> str:
     except importlib.metadata.PackageNotFoundError:
         # Fallback to reading from pyproject.toml in development
         try:
-            project_root = Path(__file__).parents[
-                3
-            ]  # src/pumper/cli/main.py -> project root
-            pyproject_path = project_root / "pyproject.toml"
-            if pyproject_path.exists():
-                with open(pyproject_path, "rb") as f:
-                    data = tomli.load(f)
-                version = data.get("project", {}).get("version", "unknown")
-                return f"{version} (development)"
-            else:
-                return "unknown"
+            return get_version_from_pyproject_dev()
         except Exception:
             return "unknown"
+
+
+def get_version_from_pyproject_dev():
+    project_root = Path(__file__).parents[3]  # src/pumper/cli/main.py -> project root
+    pyproject_path = project_root / "pyproject.toml"
+    if not pyproject_path.exists():
+        return "unknown"
+    with open(pyproject_path, "rb") as f:
+        data = tomli.load(f)
+    version = data.get("project", {}).get("version", "unknown")
+    return f"{version} (development)"
 
 
 def get_version_quietly(config_file: Path) -> Optional[str]:
@@ -147,7 +149,7 @@ def get_current_project_info() -> Tuple[Optional[str], Optional[str]]:
 
         # Try to get project name from the config file
         project_name = None
-        try:
+        with contextlib.suppress(Exception):
             if config_file.suffix == ".toml":
                 with open(config_file, "rb") as f:
                     data = tomli.load(f)
@@ -172,16 +174,8 @@ def get_current_project_info() -> Tuple[Optional[str], Optional[str]]:
                     if "name" in data:
                         project_name = data["name"]
 
-        except Exception:
-            # If we can't get project name, that's okay - we still have version
-            pass
-
         # Only return if we have at least a version, name is optional
-        if project_version:
-            return project_name, project_version
-
-        return None, None
-
+        return (project_name, project_version) if project_version else (None, None)
     except Exception:
         # Any error means we're not 100% confident
         return None, None
@@ -283,7 +277,7 @@ def _is_amend_commit(commit_message: str) -> bool:
 
         # Method 1: Check for ORIG_HEAD existence AND verify it matches current HEAD
         # During amend, ORIG_HEAD points to the commit being amended (same as current HEAD)
-        try:
+        with contextlib.suppress(subprocess.CalledProcessError, OSError):
             git_dir_result = subprocess.run(
                 ["git", "rev-parse", "--git-dir"],
                 capture_output=True,
@@ -309,9 +303,6 @@ def _is_amend_commit(commit_message: str) -> bool:
                 # During amend, ORIG_HEAD equals current HEAD
                 if orig_head_sha == current_head_sha:
                     return True
-
-        except (subprocess.CalledProcessError, FileNotFoundError, OSError):
-            pass
 
         # Method 2: Compare with HEAD commit message as fallback
         result = subprocess.run(
@@ -353,22 +344,18 @@ def handle_version_bump(
         try:
             current, version_file = commands.get_version_info(config_file, config)
             logger.debug(f"Current version {current} from {version_file}")
-        except FileNotFoundError as e:
+        except (FileNotFoundError, ValueError) as e:
             console.print(f"[red]Error:[/] {str(e)}")
-            raise typer.Exit(1)
-        except ValueError as e:
-            console.print(f"[red]Error:[/] {str(e)}")
-            raise typer.Exit(1)
-
+            raise typer.Exit(1) from e
         # Get commits
         commits = []
         if message:
             for msg in message:
                 try:
                     commits.append(commands.ConventionalCommit.parse(msg))
-                except ValueError:
+                except ValueError as exc:
                     console.print(f"[red]Error:[/] Invalid commit message: {msg}")
-                    raise typer.Exit(1)
+                    raise typer.Exit(1) from exc
         else:
             commits = commands.get_commits_since_last_tag()
             if not commits:
@@ -408,7 +395,7 @@ def handle_version_bump(
 
     except Exception as e:
         console.print(f"[red]Error:[/] {str(e)}")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
 
 @app.command(name="patch")
@@ -635,7 +622,7 @@ def hook_command(
         raise
     except Exception as e:
         console.print(f"[red]Hook failed:[/] {e}")
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
 
 @app.command(name="install-hooks")

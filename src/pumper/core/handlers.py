@@ -59,8 +59,7 @@ class TomlFileHandler(FileHandler):
 
             for key in self.version_keys:
                 try:
-                    version_str = self._get_nested_value(data, key)
-                    if version_str:
+                    if version_str := self._get_nested_value(data, key):
                         self._found_key = key
                         return Version(version_str)
                 except (KeyError, TypeError):
@@ -68,7 +67,7 @@ class TomlFileHandler(FileHandler):
 
             return None
 
-        except (tomli.TOMLDecodeError, FileNotFoundError, OSError):
+        except (tomli.TOMLDecodeError, OSError):
             return None
 
     def write_version(self, version: Version) -> None:
@@ -80,7 +79,7 @@ class TomlFileHandler(FileHandler):
             with open(self.file_path, "rb") as f:
                 data = tomli.load(f)
         except (tomli.TOMLDecodeError, OSError) as e:
-            raise ValueError(f"Could not read TOML file {self.file_path}: {e}")
+            raise ValueError(f"Could not read TOML file {self.file_path}: {e}") from e
 
         # Use the key where we found the version, or the first key as fallback
         key_to_use = self._found_key or self.version_keys[0]
@@ -90,18 +89,18 @@ class TomlFileHandler(FileHandler):
         except (KeyError, TypeError) as e:
             raise ValueError(
                 f"Could not set version key '{key_to_use}' in {self.file_path}: {e}"
-            )
+            ) from e
 
         try:
             with open(self.file_path, "wb") as f:
                 tomli_w.dump(data, f)
         except OSError as e:
-            raise ValueError(f"Could not write to file {self.file_path}: {e}")
+            raise ValueError(f"Could not write to file {self.file_path}: {e}") from e
 
     def supports_file(self, file_path: Union[str, Path]) -> bool:
         """Check if this handler supports the given file."""
         path = Path(file_path)
-        return path.suffix in [".toml"] or path.name in ["pyproject.toml", "Pipfile"]
+        return path.suffix in {".toml"} or path.name in {"pyproject.toml", "Pipfile"}
 
     def _get_nested_value(self, data: Dict[str, Any], key: str) -> Any:
         """Get nested value from dictionary using dot notation."""
@@ -138,13 +137,12 @@ class JsonFileHandler(FileHandler):
             with open(self.file_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
 
-            version_str = self._get_nested_value(data, self.version_key)
-            if version_str:
+            if version_str := self._get_nested_value(data, self.version_key):
                 return Version(version_str)
 
             return None
 
-        except (json.JSONDecodeError, FileNotFoundError, OSError, KeyError, TypeError):
+        except (json.JSONDecodeError, OSError, KeyError, TypeError):
             return None
 
     def write_version(self, version: Version) -> None:
@@ -156,25 +154,25 @@ class JsonFileHandler(FileHandler):
             with open(self.file_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
         except (json.JSONDecodeError, OSError) as e:
-            raise ValueError(f"Could not read JSON file {self.file_path}: {e}")
+            raise ValueError(f"Could not read JSON file {self.file_path}: {e}") from e
 
         try:
             self._set_nested_value(data, self.version_key, str(version))
         except (KeyError, TypeError) as e:
             raise ValueError(
                 f"Could not set version key '{self.version_key}' in {self.file_path}: {e}"
-            )
+            ) from e
 
         try:
             with open(self.file_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
         except OSError as e:
-            raise ValueError(f"Could not write to file {self.file_path}: {e}")
+            raise ValueError(f"Could not write to file {self.file_path}: {e}") from e
 
     def supports_file(self, file_path: Union[str, Path]) -> bool:
         """Check if this handler supports the given file."""
         path = Path(file_path)
-        return path.suffix == ".json" or path.name in ["package.json", "composer.json"]
+        return path.suffix == ".json" or path.name in {"package.json", "composer.json"}
 
     def _get_nested_value(self, data: Dict[str, Any], key: str) -> Any:
         """Get nested value from dictionary using dot notation."""
@@ -227,8 +225,7 @@ class GenericFileHandler(FileHandler):
             with open(self.file_path, "r", encoding=self.encoding) as f:
                 content = f.read()
 
-            match = self._compiled_pattern.search(content)
-            if match:
+            if match := self._compiled_pattern.search(content):
                 groups = match.groups()
 
                 if len(groups) >= 3:
@@ -243,10 +240,10 @@ class GenericFileHandler(FileHandler):
                     except ValueError:
                         # Not a component pattern, treat as prefix/version/suffix pattern
                         # Look for the version string in the middle group(s)
-                        for i, group in enumerate(groups):
+                        for group in groups:
                             # Skip groups that look like prefixes or suffixes
-                            if group and not any(
-                                char in group for char in ['"', "'", "#", "=", ":"]
+                            if group and all(
+                                char not in group for char in ['"', "'", "#", "=", ":"]
                             ):
                                 try:
                                     return Version(
@@ -270,7 +267,7 @@ class GenericFileHandler(FileHandler):
 
             return None
 
-        except (FileNotFoundError, OSError, re.error):
+        except (OSError, re.error):
             return None
 
     def write_version(self, version: Version) -> None:
@@ -282,14 +279,16 @@ class GenericFileHandler(FileHandler):
             with open(self.file_path, "r", encoding=self.encoding) as f:
                 content = f.read()
         except (OSError, UnicodeDecodeError) as e:
-            raise ValueError(f"Could not read file {self.file_path}: {e}")
+            raise ValueError(f"Could not read file {self.file_path}: {e}") from e
 
         try:
             # Use template-based replacement with all version components available
             replacement_text = version.format_with_template(self.version_replacement)
             new_content = self._compiled_pattern.sub(replacement_text, content)
         except re.error as e:
-            raise ValueError(f"Regex replacement failed for {self.file_path}: {e}")
+            raise ValueError(
+                f"Regex replacement failed for {self.file_path}: {e}"
+            ) from e
 
         if new_content == content:
             raise ValueError(f"No version pattern found in {self.file_path}")
@@ -298,7 +297,7 @@ class GenericFileHandler(FileHandler):
             with open(self.file_path, "w", encoding=self.encoding) as f:
                 f.write(new_content)
         except (OSError, UnicodeEncodeError) as e:
-            raise ValueError(f"Could not write to file {self.file_path}: {e}")
+            raise ValueError(f"Could not write to file {self.file_path}: {e}") from e
 
     def supports_file(self, file_path: Union[str, Path]) -> bool:
         """Check if this handler supports the given file."""
@@ -329,9 +328,12 @@ class FileHandlerFactory:
                 return GenericFileHandler(file_path, **kwargs)
 
         # Auto-detect based on file extension/name
-        if path.suffix in [".toml"] or path.name in ["pyproject.toml", "Pipfile"]:
+        if path.suffix in {".toml"} or path.name in {"pyproject.toml", "Pipfile"}:
             return TomlFileHandler(file_path, **kwargs)
-        elif path.suffix == ".json" or path.name in ["package.json", "composer.json"]:
+        elif path.suffix == ".json" or path.name in {
+            "package.json",
+            "composer.json",
+        }:
             return JsonFileHandler(file_path, **kwargs)
         else:
             # Fallback to generic handler

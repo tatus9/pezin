@@ -1,5 +1,6 @@
 """Git post-commit hook for automatic version amendment and tagging."""
 
+import contextlib
 import os
 import subprocess
 import sys
@@ -165,8 +166,7 @@ def update_version_and_amend(
 
         # Find config file if not provided
         if config_file is None:
-            config_file = find_config_file(repo_root)
-            if config_file is None:
+            if (config_file := find_config_file(repo_root)) is None:
                 config_file = repo_root / "pyproject.toml"
 
         # Read configuration
@@ -291,65 +291,60 @@ def main(
     4. Creates git tag for the new version
     """
     try:
-        logger.debug("Pumper post-commit hook starting...")
-
-        repo_root = get_repo_root()
-
-        # Check if we should skip this hook
-        if should_skip_hook():
-            logger.info("Skipping post-commit hook")
-            sys.exit(0)
-
-        # Check for lock to prevent infinite loops
-        if is_lock_active(repo_root):
-            logger.info("Post-commit lock active - skipping to prevent infinite loop")
-            sys.exit(0)
-
-        # Create lock
-        create_lock(repo_root)
-
-        try:
-            # Get the commit message
-            message = get_last_commit_message()
-            if not message:
-                logger.debug("Empty commit message - exiting")
-                sys.exit(0)
-
-            logger.debug(f"Processing commit message: '{message}'")
-
-            # Update version and amend commit
-            new_version = update_version_and_amend(message, repo_root, config_file)
-
-            if new_version:
-                logger.info(f"Version bumped to {new_version}")
-                typer.echo(f"Version bumped to {new_version}")
-
-                # Create git tag if requested
-                if create_tag:
-                    if create_git_tag(new_version, repo_root):
-                        typer.echo(f"Created tag: v{new_version}")
-                    else:
-                        typer.echo(
-                            f"Tag v{new_version} already exists or failed to create"
-                        )
-            else:
-                logger.debug("No version bump needed")
-
-        finally:
-            # Always remove lock
-            remove_lock(repo_root)
-
-        logger.debug("Pumper post-commit hook completed successfully")
-        sys.exit(0)
-
+        core_flow(config_file, create_tag)
     except Exception as e:
         logger.error(f"Post-commit hook failed: {e}")
         # Always remove lock on error
-        try:
+        with contextlib.suppress(Exception):
             remove_lock(get_repo_root())
-        except Exception:
-            pass
         sys.exit(1)
+
+
+def core_flow(config_file, create_tag):
+    logger.debug("Pumper post-commit hook starting...")
+
+    repo_root = get_repo_root()
+
+    # Check if we should skip this hook
+    if should_skip_hook():
+        logger.info("Skipping post-commit hook")
+        sys.exit(0)
+
+    # Check for lock to prevent infinite loops
+    if is_lock_active(repo_root):
+        logger.info("Post-commit lock active - skipping to prevent infinite loop")
+        sys.exit(0)
+
+    # Create lock
+    create_lock(repo_root)
+
+    try:
+        # Get the commit message
+        message = get_last_commit_message()
+        if not message:
+            logger.debug("Empty commit message - exiting")
+            sys.exit(0)
+
+        logger.debug(f"Processing commit message: '{message}'")
+
+        if new_version := update_version_and_amend(message, repo_root, config_file):
+            logger.info(f"Version bumped to {new_version}")
+            typer.echo(f"Version bumped to {new_version}")
+
+            if create_tag:
+                if create_git_tag(new_version, repo_root):
+                    typer.echo(f"Created tag: v{new_version}")
+                else:
+                    typer.echo(f"Tag v{new_version} already exists or failed to create")
+        else:
+            logger.debug("No version bump needed")
+
+    finally:
+        # Always remove lock
+        remove_lock(repo_root)
+
+    logger.debug("Pumper post-commit hook completed successfully")
+    sys.exit(0)
 
 
 if __name__ == "__main__":
