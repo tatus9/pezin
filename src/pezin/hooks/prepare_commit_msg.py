@@ -128,10 +128,10 @@ def validate_commit_message(message: str) -> bool:
 
 
 def main(
-    commit_msg_file: Path = typer.Argument(
-        ...,
+    commit_msg_file: Optional[Path] = typer.Argument(
+        None,
         help="Path to the commit message file",
-        exists=True,
+        exists=False,
         file_okay=True,
         dir_okay=False,
         resolve_path=True,
@@ -171,6 +171,28 @@ def commit_analysis(commit_msg_file, commit_source, commit_sha):
         f"Hook arguments: file={commit_msg_file}, source={commit_source}, sha={commit_sha}"
     )
 
+    # Handle case where commit_msg_file is not provided (e.g., during rebase)
+    if commit_msg_file is None:
+        logger.debug("No commit message file provided - likely during rebase")
+        # During rebase, we should skip version bumping to avoid conflicts
+        if commit_source in ["squash", "merge"] or is_amend_commit(
+            commit_source, commit_sha
+        ):
+            logger.info("Rebase/squash/merge operation detected - creating skip flag")
+            try:
+                repo_root = get_repo_root()
+                skip_flag = repo_root / ".pezin_skip_version_bump"
+                skip_flag.write_text("rebase_operation")
+                logger.debug(f"Created skip flag: {skip_flag}")
+            except Exception as e:
+                logger.warning(f"Failed to create skip flag: {e}")
+        sys.exit(0)
+
+    # Ensure the file exists before proceeding
+    if not commit_msg_file.exists():
+        logger.debug(f"Commit message file {commit_msg_file} does not exist - exiting")
+        sys.exit(0)
+
     # Check if we should skip this hook
     if should_skip_hook(commit_source):
         logger.info("Skipping prepare-commit-msg hook")
@@ -178,7 +200,15 @@ def commit_analysis(commit_msg_file, commit_source, commit_sha):
 
     # Check if this is an amend commit
     if is_amend_commit(commit_source, commit_sha):
-        logger.info("Amend detected - skipping prepare-commit-msg validation")
+        logger.info("Amend detected - creating skip flag for post-commit hook")
+        # Create a flag file to tell post-commit hook to skip version bump
+        try:
+            repo_root = get_repo_root()
+            skip_flag = repo_root / ".pezin_skip_version_bump"
+            skip_flag.write_text("amend")
+            logger.debug(f"Created skip flag: {skip_flag}")
+        except Exception as e:
+            logger.warning(f"Failed to create skip flag: {e}")
         sys.exit(0)
 
     # Read commit message

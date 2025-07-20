@@ -45,7 +45,7 @@ Add to your `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/tatus9/pezin
-    rev: v0.1.0  # Use the latest version
+    rev: v0.1.2  # Use the latest version
     hooks:
       - id: pezin
 ```

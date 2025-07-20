@@ -310,6 +310,18 @@ def core_flow(config_file, create_tag):
         logger.info("Skipping post-commit hook")
         sys.exit(0)
 
+    # Check for skip flag from prepare-commit-msg hook (for amend detection)
+    skip_flag = repo_root / ".pezin_skip_version_bump"
+    if skip_flag.exists():
+        reason = skip_flag.read_text().strip()
+        logger.info(f"Skip flag found: {reason} - skipping version bump")
+        try:
+            skip_flag.unlink()
+            logger.debug("Removed skip flag")
+        except Exception as e:
+            logger.warning(f"Failed to remove skip flag: {e}")
+        sys.exit(0)
+
     # Check for lock to prevent infinite loops
     if is_lock_active(repo_root):
         logger.info("Post-commit lock active - skipping to prevent infinite loop")

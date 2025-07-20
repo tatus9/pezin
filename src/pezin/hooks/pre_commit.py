@@ -77,9 +77,9 @@ def is_amend_commit(
     Returns:
         True if this is an amend operation, False otherwise
     """
-    logger.debug("Starting amend detection")
-    logger.debug(f"Commit source: {commit_source}")
-    logger.debug(f"Commit SHA: {commit_sha}")
+    logger.info("Starting amend detection")
+    logger.info(f"Commit source: {commit_source}")
+    logger.info(f"Commit SHA: {commit_sha}")
 
     # Method 1: Use prepare-commit-msg hook arguments (most reliable)
     if commit_source == "commit":
@@ -221,21 +221,23 @@ def is_amend_commit(
                 ]
                 return "\n".join(clean_lines).strip()
 
-            clean_commit_message = clean_commit_message(commit_message)
+            clean_commit_message_text = clean_commit_message(commit_message)
             clean_head_message = head_message.strip()
 
-            logger.debug("Comparing commit messages")
-            logger.debug(
-                f"Messages equal: {clean_commit_message == clean_head_message}"
+            logger.info("Comparing commit messages for amend detection")
+            logger.info(f"Clean commit message: '{clean_commit_message_text}'")
+            logger.info(f"Clean HEAD message: '{clean_head_message}'")
+            logger.info(
+                f"Messages equal: {clean_commit_message_text == clean_head_message}"
             )
 
             # If the commit message being processed is identical to HEAD's message,
             # this is likely an amend operation
-            if clean_commit_message == clean_head_message:
+            if clean_commit_message_text == clean_head_message:
                 logger.info("Commit message matches HEAD - amend detected")
                 return True
 
-        logger.debug("No amend indicators found - proceeding with version bump")
+        logger.info("No amend indicators found - proceeding with version bump")
         return False
 
     except subprocess.CalledProcessError as e:
@@ -504,14 +506,46 @@ def main(
             if "GIT" in key.upper() and key in ["GIT_REFLOG_ACTION", "GIT_EDITOR"]:
                 logger.debug(f"ENV {key}={os.environ[key]}")
 
-        # Check if this is an amend commit using hook arguments and fallback methods
-        if not skip_amend_detection and is_amend_commit(
-            commit_source, commit_sha, message
-        ):
+        # Check if this is an amend commit using simple and reliable method
+        logger.info("Starting amend detection check")
+        logger.info(f"skip_amend_detection: {skip_amend_detection}")
+        logger.info(f"commit_source: {commit_source}, commit_sha: {commit_sha}")
+
+        is_amend = False
+        if not skip_amend_detection:
+            # Simple amend detection: compare commit message with HEAD
+            try:
+                result = subprocess.run(
+                    ["git", "log", "-1", "--pretty=format:%s"],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                )
+                head_subject = result.stdout.strip()
+
+                # Get the subject line from current commit message
+                current_subject = message.split("\n")[0].strip()
+
+                logger.info(f"HEAD subject: '{head_subject}'")
+                logger.info(f"Current subject: '{current_subject}'")
+
+                if head_subject == current_subject:
+                    logger.info("Commit subjects match - this is likely an amend")
+                    is_amend = True
+                else:
+                    logger.info("Commit subjects differ - this is a new commit")
+
+            except subprocess.CalledProcessError as e:
+                logger.info(f"Could not check HEAD commit: {e} - assuming new commit")
+
+        if is_amend:
+            logger.info("Amend detected - skipping version bump")
             show_status(
                 "Amend detected - skipping version bump",
                 "Amend commit detected - skipping version bump",
             )
+
+        logger.info("Amend detection completed - proceeding with version bump")
         logger.debug("Not an amend - proceeding with version bump")
 
         if new_version := update_version(message, repo_root, version_file, config_file):
