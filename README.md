@@ -1,8 +1,5 @@
 # 🚀 Pumper
 
-<<<<<<< HEAD
-<<<<<<< Updated upstream
-=======
 [![CI](https://github.com/tatus9/pumper/workflows/CI/badge.svg)](https://github.com/tatus9/pumper/actions/workflows/ci.yml)
 [![PyPI version](https://badge.fury.io/py/pumper.svg)](https://badge.fury.io/py/pumper)
 [![Python versions](https://img.shields.io/pypi/pyversions/pumper.svg)](https://pypi.org/project/pumper/)
@@ -10,14 +7,8 @@
 [![Downloads](https://img.shields.io/pypi/dm/pumper.svg)](https://pypi.org/project/pumper/)
 
 A tool that care about versions, you could you manually or it could be used as a pre-commit hook to automate version bumping and changelog management using conventional commits.
->>>>>>> Stashed changes
-
-Automated version bumping and changelog management using conventional commits.
-=======
-A tool that care about versions, you could you manually or it could be used as a pre-commit hook to automate version bumping and changelog management using conventional commits.
 
 <img src="static/img/icon.png" alt="Pump it UP" style="width:50%; height:auto;">
->>>>>>> 66fcc00 (docs: restructure README and create comprehensive documentation)
 
 ## Features
 
@@ -31,26 +22,16 @@ A tool that care about versions, you could you manually or it could be used as a
 - 🏷️ **Pre-release version support** (alpha, beta, rc)
 - 🔧 **Flexible version formats** - Support any prefix/suffix pattern (v1.2.3, 1.2.3v, release-1.2.3)
 
-## Installation
+## Quick Start
 
-<<<<<<< HEAD
-Install from PyPI:
-
-Install Pumper from PyPI:
-=======
 ### Installation
->>>>>>> 66fcc00 (docs: restructure README and create comprehensive documentation)
+
+Install from PyPI:
 
 ```bash
 pip install pumper
 ```
 
-<<<<<<< HEAD
-<<<<<<< Updated upstream
-### Git Hook Setup
-
-To automatically bump versions on commit:
-=======
 Or install the latest development version:
 
 ```bash
@@ -59,29 +40,17 @@ pip install git+https://github.com/tatus9/pumper.git
 
 ### Setup Git Hook
 
-=======
-### Setup Git Hook
-
->>>>>>> 66fcc00 (docs: restructure README and create comprehensive documentation)
 Add to your `.pre-commit-config.yaml`:
 
 ```yaml
 repos:
-<<<<<<< HEAD
   - repo: https://github.com/tatus9/pumper
-=======
-  - repo: https://github.com/tatus9/pumper
->>>>>>> 66fcc00 (docs: restructure README and create comprehensive documentation)
     rev: v1.1.0  # Use the latest version
     hooks:
       - id: pumper
 ```
 
 Install the hooks:
-<<<<<<< HEAD
->>>>>>> Stashed changes
-=======
->>>>>>> 66fcc00 (docs: restructure README and create comprehensive documentation)
 
 ```bash
 pip install pre-commit pumper
@@ -135,9 +104,8 @@ pumper minor --skip-changelog
 git commit -m "feat: add multi-platform support"
 ```
 
-## Documentation
+## Python API
 
-<<<<<<< HEAD
 ```python
 from pumper import Version, ConventionalCommit, ChangelogManager
 
@@ -216,7 +184,9 @@ Available tokens:
 - `[force-minor]`: Force minor bump (1.0.0 → 1.1.0)
 - `[force-patch]`: Force patch bump (1.0.0 → 1.0.1)
 - `[pre-release=label]`: Add pre-release label (alpha, beta, rc)
-=======
+
+## Documentation
+
 - 📖 **[Quick Start Guide](docs/quick-start.md)** - Get started in minutes
 - 📖 **[Installation Guide](docs/installation.md)** - Detailed setup instructions
 - 🌍 **[Multi-Language Support](docs/multi-language-support.md)** - Python, Node.js, C++, Rust, and more
@@ -226,7 +196,6 @@ Available tokens:
 - 💻 **[CLI Usage](docs/cli-usage.md)** - Manual version management
 - 🐍 **[Python API](docs/python-api.md)** - Programmatic usage
 - 🔧 **[Troubleshooting](docs/troubleshooting.md)** - Common issues and solutions
->>>>>>> 66fcc00 (docs: restructure README and create comprehensive documentation)
 
 ### Examples
 

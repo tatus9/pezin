@@ -30,6 +30,8 @@ pumper = "pumper.cli.main:run"
 dev = [
     "pdbpp>=0.11.6",
     "pytest>=8.4.0",
+    "pytest-cov>=6.0.0",
+    "ruff>=0.8.0",
 ]
 
 [tool.setuptools.package-dir]
