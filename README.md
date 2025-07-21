@@ -1,4 +1,4 @@
-# 🚀 Pezin
+# 🌱 Pezin
 
 [![CI](https://github.com/tatus9/pezin/workflows/CI/badge.svg)](https://github.com/tatus9/pezin/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/pezin.svg)](https://pypi.org/project/pezin/)
@@ -7,8 +7,6 @@
 [![Downloads](https://img.shields.io/pypi/dm/pezin.svg)](https://pypi.org/project/pezin/)
 
 A tool that care about versions, you could you manually or it could be used as a pre-commit hook to automate version bumping and changelog management using conventional commits.
-
-<img src="static/img/icon.png" alt="Bump version UP" style="width:50%; height:auto;">
 
 ## Features
 
