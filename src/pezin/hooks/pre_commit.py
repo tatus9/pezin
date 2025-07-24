@@ -272,6 +272,11 @@ def update_version(
 ) -> Optional[str]:
     """Update version based on commit message using VersionManager."""
     try:
+        # Skip version updates for fixup commits
+        if ConventionalCommit.is_fixup_commit(message):
+            logger.info("Fixup/squash commit - skipping version update")
+            return None
+
         commit = ConventionalCommit.parse(message)
         logger.info(f"Commit type: {commit.type}")
 
@@ -350,6 +355,11 @@ def update_version_legacy(
 ) -> Optional[str]:
     """Legacy version update function for backward compatibility."""
     try:
+        # Skip version updates for fixup commits
+        if ConventionalCommit.is_fixup_commit(message):
+            logger.info("Fixup/squash commit - skipping legacy version update")
+            return None
+
         commit = ConventionalCommit.parse(message)
         logger.info(f"Commit type: {commit.type}")
 
@@ -493,6 +503,12 @@ def main(
         message = commit_msg_file.read_text().strip()
         if not message:
             logger.debug("Empty commit message - exiting")
+            sys.exit(0)
+
+        # Check if this is a fixup or squash commit
+        if ConventionalCommit.is_fixup_commit(message):
+            logger.info("Fixup/squash commit detected - skipping version bump")
+            typer.echo("Fixup/squash commit detected - skipping version bump")
             sys.exit(0)
 
         # Log basic info

@@ -6,6 +6,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 
+## [0.1.1-rc] - 2025-07-27
+### ✨ Features
+
+- support fixup/squash commits
+
+### 🐛 Bug Fixes
+
+- missing pezin pre-commit hook
+
+### 📚 Documentation
+
+- cleanup
+- update readme
+
+
+[Unreleased]: https://github-tatus9/tatus9/pezin/compare/v0.1.1-rc...HEAD
+[0.1.1-rc]: https://github-tatus9/tatus9/pezin/compare/v0.1.0...v0.1.1-rc
+[0.1.0]: https://github-tatus9/tatus9/pezin/compare/v0.0.3...v0.1.0
+[0.0.3]: https://github-tatus9/tatus9/pezin/releases/tag/v0.0.3
+
+## [0.1.0] - 2025-07-24
+### 🐛 Bug Fixes
+
+- missing pezin pre-commit hook
+
+### 📚 Documentation
+
+- cleanup
+- update readme
+
+
+[Unreleased]: https://github-tatus9/tatus9/pezin/compare/v0.1.0...HEAD
+[0.1.0]: https://github-tatus9/tatus9/pezin/compare/v0.0.3...v0.1.0
+[0.0.3]: https://github-tatus9/tatus9/pezin/releases/tag/v0.0.3
+
 ## [0.0.3] - 2025-07-24
 ### 🐛 Bug Fixes
 

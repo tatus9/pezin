@@ -70,6 +70,36 @@ class ConventionalCommit:
         r"\s*(?P<description>.+)$"
     )
     FOOTER_PATTERN = re.compile(r"\[(?P<key>[^\]=]+)(?:=(?P<value>[^\]]+))?\]")
+    FIXUP_PATTERN = re.compile(r"^(fixup!|squash!)\s*", re.IGNORECASE)
+
+    @staticmethod
+    def is_fixup_commit(message: str) -> bool:
+        """Check if a commit message is a fixup or squash commit.
+
+        Args:
+            message: Commit message to check
+
+        Returns:
+            True if the message starts with 'fixup!' or 'squash!'
+        """
+        return bool(ConventionalCommit.FIXUP_PATTERN.match(message.strip()))
+
+    @classmethod
+    def parse_with_fixup_handling(cls, message: str) -> Optional["ConventionalCommit"]:
+        """Parse a commit message, returning None for fixup commits.
+
+        Args:
+            message: Full commit message to parse
+
+        Returns:
+            Parsed ConventionalCommit instance or None for fixup commits
+
+        Raises:
+            ValueError: If message doesn't match conventional format (and isn't fixup)
+        """
+        if cls.is_fixup_commit(message):
+            return None
+        return cls.parse(message)
 
     @classmethod
     def parse(cls, message: str) -> "ConventionalCommit":

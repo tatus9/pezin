@@ -1,7 +1,7 @@
 repos:
   # Basic
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.5.0
+    rev: v5.0.0
     hooks:
       -   id: trailing-whitespace
       -   id: end-of-file-fixer
@@ -24,13 +24,7 @@ repos:
       # Run the formatter.
       - id: ruff-format
 
-  - repo: local
+  - repo: https://github.com/tatus9/pezin
+    rev: v0.1.0
     hooks:
-      # Pezin version control hook
-      - id: pezin-commit-msg
-        name: Pezin Version Control
-        entry: python3 -m pezin.hooks.pre_commit
-        language: system
-        stages: [commit-msg]
-        always_run: true
-        pass_filenames: false
+    - id: pezin
