@@ -155,3 +155,99 @@ feat: add loguru as default"""
     # The rest should be treated as body and footer due to double newline splits
     assert commit.body == "fix: commit amend should not bump version"
     assert commit.footer == "feat: add loguru as default"
+
+
+def test_fixup_commit_detection():
+    """Test detecting fixup and squash commits."""
+    test_cases = [
+        ("fixup! feat: add new feature", True),
+        ("squash! fix: bug fix", True),
+        ("FIXUP! chore: update deps", True),
+        ("SQUASH! docs: update readme", True),
+        ("fixup!feat: missing space", True),
+        ("squash!fix: missing space", True),
+        ("feat: fixup in description", False),
+        ("fix: squash this", False),
+        ("chore: normal commit", False),
+        ("", False),
+        ("just text", False),
+        ("fixup prefix without exclamation", False),
+        ("squash prefix without exclamation", False),
+    ]
+
+    for message, expected_result in test_cases:
+        assert ConventionalCommit.is_fixup_commit(message) == expected_result
+
+
+def test_parse_with_fixup_handling():
+    """Test parsing commits with fixup handling."""
+    # Regular commit should parse normally
+    regular_commit = "feat: add new feature"
+    parsed = ConventionalCommit.parse_with_fixup_handling(regular_commit)
+    assert parsed is not None
+    assert parsed.type == CommitType.FEAT
+    assert parsed.description == "add new feature"
+
+    # Fixup commit should return None
+    fixup_commit = "fixup! feat: add new feature"
+    parsed = ConventionalCommit.parse_with_fixup_handling(fixup_commit)
+    assert parsed is None
+
+    # Squash commit should return None
+    squash_commit = "squash! fix: bug fix"
+    parsed = ConventionalCommit.parse_with_fixup_handling(squash_commit)
+    assert parsed is None
+
+    # Invalid conventional commit (non-fixup) should raise ValueError
+    with pytest.raises(ValueError):
+        ConventionalCommit.parse_with_fixup_handling("invalid commit message")
+
+
+def test_fixup_commit_edge_cases():
+    """Test edge cases for fixup commit detection."""
+    test_cases = [
+        # Edge cases that should be detected as fixup
+        ("fixup! ", True),  # Empty fixup
+        ("squash! ", True),  # Empty squash
+        ("fixup!\tfeat: tab after exclamation", True),  # Tab whitespace
+        ("squash!\nfix: newline after exclamation", True),  # Newline whitespace
+        ("FIXUP! FEAT: ALL CAPS", True),  # All caps
+        ("Fixup! Mixed: case", True),  # Mixed case
+        ("squASH! weird: CaSe", True),  # Weird case
+        # Edge cases that should NOT be detected as fixup
+        ("fixup", False),  # Missing exclamation
+        ("squash", False),  # Missing exclamation
+        ("prefix fixup!", False),  # Not at start
+        ("some fixup! text", False),  # In middle
+        ("text squash! more", False),  # In middle
+        ("!fixup feat: backwards", False),  # Wrong order
+        ("fix up! spaces", False),  # Spaces in keyword
+        ("squ ash! spaces", False),  # Spaces in keyword
+    ]
+
+    for message, expected_result in test_cases:
+        assert ConventionalCommit.is_fixup_commit(message) == expected_result, (
+            f"Failed for: '{message}'"
+        )
+
+
+def test_fixup_with_multiline_messages():
+    """Test fixup detection with multiline commit messages."""
+    multiline_fixup = """fixup! feat: add authentication
+
+This is a fixup commit that includes
+multiple lines of description.
+
+It should still be detected as a fixup commit."""
+
+    assert ConventionalCommit.is_fixup_commit(multiline_fixup)
+    assert ConventionalCommit.parse_with_fixup_handling(multiline_fixup) is None
+
+    multiline_squash = """squash! fix(auth): fix login bug
+
+This squash commit also has
+multiple lines and should be
+properly detected."""
+
+    assert ConventionalCommit.is_fixup_commit(multiline_squash)
+    assert ConventionalCommit.parse_with_fixup_handling(multiline_squash) is None

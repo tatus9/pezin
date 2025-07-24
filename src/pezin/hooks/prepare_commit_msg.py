@@ -119,6 +119,13 @@ def validate_commit_message(message: str) -> bool:
     This is optional validation - we don't fail the commit, just warn.
     """
     try:
+        # Skip validation for fixup commits
+        if ConventionalCommit.is_fixup_commit(message):
+            logger.debug(
+                "Fixup/squash commit - skipping conventional format validation"
+            )
+            return True
+
         commit = ConventionalCommit.parse(message)
         logger.debug(f"Valid conventional commit: {commit.type}")
         return True
@@ -215,6 +222,20 @@ def commit_analysis(commit_msg_file, commit_source, commit_sha):
     message = commit_msg_file.read_text().strip()
     if not message:
         logger.debug("Empty commit message - exiting")
+        sys.exit(0)
+
+    # Check if this is a fixup or squash commit
+    if ConventionalCommit.is_fixup_commit(message):
+        logger.info(
+            "Fixup/squash commit detected - creating skip flag for post-commit hook"
+        )
+        try:
+            repo_root = get_repo_root()
+            skip_flag = repo_root / ".pezin_skip_version_bump"
+            skip_flag.write_text("fixup_commit")
+            logger.debug(f"Created skip flag: {skip_flag}")
+        except Exception as e:
+            logger.warning(f"Failed to create skip flag: {e}")
         sys.exit(0)
 
     # Log basic info

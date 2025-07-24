@@ -155,6 +155,11 @@ def update_version_and_amend(
 ) -> Optional[str]:
     """Update version files and amend the commit with changes."""
     try:
+        # Skip version updates for fixup commits
+        if ConventionalCommit.is_fixup_commit(message):
+            logger.info("Fixup/squash commit - skipping version update and amend")
+            return None
+
         commit = ConventionalCommit.parse(message)
         logger.info(f"Commit type: {commit.type}")
 
@@ -335,6 +340,12 @@ def core_flow(config_file, create_tag):
         message = get_last_commit_message()
         if not message:
             logger.debug("Empty commit message - exiting")
+            sys.exit(0)
+
+        # Check if this is a fixup or squash commit
+        if ConventionalCommit.is_fixup_commit(message):
+            logger.info("Fixup/squash commit detected - skipping version bump")
+            typer.echo("Fixup/squash commit detected - skipping version bump")
             sys.exit(0)
 
         logger.debug(f"Processing commit message: '{message}'")
