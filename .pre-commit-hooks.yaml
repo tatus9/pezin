@@ -1,0 +1,9 @@
+- id: pezin
+  name: Pezin Version Control
+  description: Automated version bumping based on conventional commits
+  entry: python -m pezin.hooks.pre_commit
+  language: python
+  stages: [commit-msg]
+  always_run: true
+  pass_filenames: false
+  require_serial: true

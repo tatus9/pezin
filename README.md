@@ -6,7 +6,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Downloads](https://img.shields.io/pypi/dm/pezin.svg)](https://pypi.org/project/pezin/)
 
-A tool that care about versions, you could you manually or it could be used as a pre-commit hook to automate version bumping and changelog management using conventional commits.
+A tool that handles versioning with care — it can be used manually or integrated as a pre-commit hook to automate version bumps and changelog generation based on conventional commits.
 
 ## Features
 
