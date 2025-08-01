@@ -277,7 +277,7 @@ def _is_amend_commit(commit_message: str) -> bool:
 
         # Method 1: Check for ORIG_HEAD existence AND verify it matches current HEAD
         # During amend, ORIG_HEAD points to the commit being amended (same as current HEAD)
-        with contextlib.suppress(subprocess.CalledProcessError, OSError):
+        try:
             git_dir_result = subprocess.run(
                 ["git", "rev-parse", "--git-dir"],
                 capture_output=True,
@@ -303,6 +303,8 @@ def _is_amend_commit(commit_message: str) -> bool:
                 # During amend, ORIG_HEAD equals current HEAD
                 if orig_head_sha == current_head_sha:
                     return True
+        except (subprocess.CalledProcessError, OSError):
+            pass
 
         # Method 2: Compare with HEAD commit message as fallback
         result = subprocess.run(

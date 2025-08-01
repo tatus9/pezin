@@ -21,17 +21,17 @@ class FileHandler(ABC):
     @abstractmethod
     def read_version(self) -> Optional[Version]:
         """Read version from the file."""
-        pass
+        raise NotImplementedError()
 
     @abstractmethod
     def write_version(self, version: Version) -> None:
         """Write version to the file."""
-        pass
+        raise NotImplementedError()
 
     @abstractmethod
     def supports_file(self, file_path: Union[str, Path]) -> bool:
         """Check if this handler supports the given file."""
-        pass
+        raise NotImplementedError()
 
 
 class TomlFileHandler(FileHandler):
