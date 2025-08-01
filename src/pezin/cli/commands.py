@@ -104,10 +104,14 @@ def read_version_from_toml(file_path: Path) -> Optional[str]:
 
     # Try project section first
     if "project" in data and "version" in data["project"]:
-        return get_version_data(data, "project", "Found version in [project] section: ")
+        return _extract_version_from_section(
+            data, "project", "Found version in [project] section: "
+        )
     # Try pezin section next
     if "pezin" in data and "version" in data["pezin"]:
-        return get_version_data(data, "pezin", "Found version in [pezin] section: ")
+        return _extract_version_from_section(
+            data, "pezin", "Found version in [pezin] section: "
+        )
     # Try tool.pezin section (PEP 518)
     if (
         "tool" in data
@@ -122,9 +126,10 @@ def read_version_from_toml(file_path: Path) -> Optional[str]:
     return None
 
 
-def get_version_data(data, project_type, debug_message):
-    version = data[project_type]["version"]
-    logger.debug(f"{debug_message}{version}")
+def _extract_version_from_section(data, section_name, debug_prefix):
+    """Extract version from a specific section with debug logging."""
+    version = data[section_name]["version"]
+    logger.debug(f"{debug_prefix}{version}")
     return version
 
 
@@ -260,8 +265,16 @@ def get_changelog_file(config: Dict[str, Any], default_file: Path) -> Path:
     return default_file
 
 
+_git_repo_url_cache = None
+
+
 def get_git_repo_url() -> Optional[str]:
-    """Get repository URL from git config."""
+    """Get repository URL from git config (cached)."""
+    global _git_repo_url_cache
+
+    if _git_repo_url_cache is not None:
+        return _git_repo_url_cache
+
     import subprocess
 
     try:
@@ -280,23 +293,45 @@ def get_git_repo_url() -> Optional[str]:
         if url.endswith(".git"):
             url = url[:-4]
 
+        _git_repo_url_cache = url
         return url
 
     except subprocess.CalledProcessError:
+        _git_repo_url_cache = None
         return None
 
 
+_commits_cache = None
+_last_head_sha = None
+
+
 def get_commits_since_last_tag() -> List[ConventionalCommit]:
-    """Get commits since the last version tag."""
+    """Get commits since the last version tag (cached)."""
+    global _commits_cache, _last_head_sha
+
     import subprocess
 
-    commits = []
     try:
+        # Check current HEAD to see if cache is still valid
+        current_head = subprocess.run(
+            ["git", "rev-parse", "HEAD"], capture_output=True, text=True, check=True
+        ).stdout.strip()
+
+        if _commits_cache is not None and _last_head_sha == current_head:
+            return _commits_cache
+
+        commits = []
         get_commits_from_logs(subprocess, commits)
+
+        # Cache the results
+        _commits_cache = commits
+        _last_head_sha = current_head
+
+        return commits
+
     except subprocess.CalledProcessError:
         logger.debug("Not in a git repository or no commits found")
-
-    return commits
+        return []
 
 
 def get_commits_from_logs(subprocess, commits):
@@ -363,19 +398,16 @@ def bump_version(
 
 
 def prepare_new_version(config, bump_type, prerelease, dry_run):
-    # Use new VersionManager system
+    """Prepare new version using VersionManager system."""
     version_manager = VersionManager.from_config(config["pezin"])
 
-    # Get current version from primary file
     current_version = version_manager.get_primary_version()
     if not current_version:
         raise ValueError("No version found in configured files")
 
-    # Check version consistency across all files
     if not version_manager.validate_version_consistency():
         logger.warning("Version inconsistency detected across files")
 
-    # Calculate new version
     new_version = current_version.bump(bump_type, prerelease)
 
     if not dry_run:

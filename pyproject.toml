@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pezin"
-version = "0.2.0"
+version = "0.2.1"
 description = "Automated version bumping and changelog management using conventional commits"
 authors = [
     { name = "Tatus9", email = "rafael@rro.one" },

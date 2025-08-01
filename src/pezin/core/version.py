@@ -28,6 +28,10 @@ from typing import Dict, List, Optional, Tuple, Union
 
 from packaging.version import Version as PackagingVersion
 
+from ..logging import get_logger
+
+logger = get_logger()
+
 
 class VersionBumpType(str, Enum):
     """Type of version bump following semantic versioning."""
@@ -35,157 +39,6 @@ class VersionBumpType(str, Enum):
     MAJOR = "major"
     MINOR = "minor"
     PATCH = "patch"
-
-
-class CommitType(str, Enum):
-    """Conventional commit types."""
-
-    FEAT = "feat"
-    FIX = "fix"
-    DOCS = "docs"
-    STYLE = "style"
-    REFACTOR = "refactor"
-    PERF = "perf"
-    TEST = "test"
-    CHORE = "chore"
-
-
-@dataclass
-class ConventionalCommit:
-    """Parser for conventional commit messages."""
-
-    type: CommitType
-    scope: Optional[str]
-    breaking: bool
-    description: str
-    body: Optional[str]
-    footer: Optional[str]
-
-    COMMIT_PATTERN = re.compile(
-        r"""
-        ^(?P<type>feat|fix|docs|style|refactor|perf|test|chore)
-        (?:\((?P<scope>[^)]+)\))?
-        (?P<breaking>!)?
-        :\s
-        (?P<description>.+?)
-        (?:\n\n(?P<body_and_footer>.+))?$
-        """,
-        re.VERBOSE | re.DOTALL,
-    )
-
-    BREAKING_CHANGE_PATTERN = re.compile(r"BREAKING[\s-]CHANGE:")
-    FOOTER_TOKEN_PATTERN = re.compile(r"\[(?P<key>[^=\]]+)(?:=(?P<value>[^\]]+))?\]")
-
-    @classmethod
-    def parse(cls, message: str) -> "ConventionalCommit":
-        """Parse a commit message into its components."""
-        match = cls.COMMIT_PATTERN.match(message.strip())
-        if not match:
-            raise ValueError(
-                "Commit message must follow Conventional Commits format:\n"
-                "<type>[optional scope]!: <description>\n\n[optional body]\n\n[optional footer]"
-            )
-
-        data = match.groupdict()
-
-        # Parse body and footer from combined content
-        body_and_footer = data.get("body_and_footer")
-        body = None
-        footer = None
-
-        if body_and_footer:
-            # Check if it contains BREAKING CHANGE or footer tokens
-            if cls.BREAKING_CHANGE_PATTERN.search(
-                body_and_footer
-            ) or cls.FOOTER_TOKEN_PATTERN.search(body_and_footer):
-                # If it contains footer patterns, treat as footer
-                footer = body_and_footer
-            else:
-                # Otherwise treat as body
-                body = body_and_footer
-
-        breaking = bool(data["breaking"]) or bool(
-            footer and cls.BREAKING_CHANGE_PATTERN.search(footer)
-        )
-
-        return cls(
-            type=CommitType(data["type"]),
-            scope=data.get("scope"),
-            breaking=breaking,
-            description=data["description"],
-            body=body,
-            footer=footer,
-        )
-
-    def get_bump_type(self) -> Optional[VersionBumpType]:
-        """Determine version bump type from commit message."""
-        # Check both body and footer for control flags
-        content_to_check = []
-        if self.body:
-            content_to_check.append(self.body)
-        if self.footer:
-            content_to_check.append(self.footer)
-
-        # Check for skip-bump in both body and footer
-        for content in content_to_check:
-            if "[skip-bump]" in content:
-                return None
-
-        # Check for force flags in both body and footer
-        for content in content_to_check:
-            for flag, bump_type in [
-                ("[force-major]", VersionBumpType.MAJOR),
-                ("[force-minor]", VersionBumpType.MINOR),
-                ("[force-patch]", VersionBumpType.PATCH),
-            ]:
-                if flag in content:
-                    return bump_type
-
-        # Standard conventional commit rules
-        if self.breaking:
-            return VersionBumpType.MAJOR
-        elif self.type == CommitType.FEAT:
-            return VersionBumpType.MINOR
-        elif self.type == CommitType.FIX:
-            return VersionBumpType.PATCH
-        # Other commit types (chore, docs, style, etc.) don't trigger version bumps
-        return None
-
-    @dataclass(frozen=True)
-    class FooterToken:
-        """Token parsed from commit footer."""
-
-        key: str
-        value: Optional[str] = None
-
-        def __eq__(self, other: object) -> bool:
-            if not isinstance(other, ConventionalCommit.FooterToken):
-                return NotImplemented
-            return self.key == other.key and self.value == other.value
-
-    def get_footer_tokens(self) -> list[FooterToken]:
-        """Parse footer section into tokens."""
-        tokens = []
-        for section in [self.body, self.footer]:
-            if section:
-                for match in self.FOOTER_TOKEN_PATTERN.finditer(section):
-                    key = match.group("key")
-                    if value := match.group("value"):
-                        tokens.append(self.FooterToken(key, value))
-                    else:
-                        tokens.append(self.FooterToken(key))
-        return tokens
-
-    def get_prerelease_label(self) -> Optional[str]:
-        """Extract pre-release label from commit footer."""
-        return next(
-            (
-                token.value
-                for token in self.get_footer_tokens()
-                if token.key == "pre-release" and token.value in ["alpha", "beta", "rc"]
-            ),
-            None,
-        )
 
 
 class Version:
@@ -537,7 +390,7 @@ class VersionManager:
                 version = handler.read_version()
                 versions[path] = version
             except Exception as e:
-                print(f"Warning: Could not read version from {path}: {e}")
+                logger.warning(f"Could not read version from {path}: {e}")
                 versions[path] = None
         return versions
 
@@ -549,7 +402,7 @@ class VersionManager:
                 handler.write_version(version)
                 updated_files.append(path)
             except Exception as e:
-                print(f"Warning: Could not write version to {path}: {e}")
+                logger.warning(f"Could not write version to {path}: {e}")
         return updated_files
 
     def get_primary_version(self) -> Optional[Version]:
