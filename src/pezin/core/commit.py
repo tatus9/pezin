@@ -101,6 +101,24 @@ class ConventionalCommit:
             return None
         return cls.parse(message)
 
+    @staticmethod
+    def is_merge_commit(message: str) -> bool:
+        """Check if a commit message is a merge commit.
+
+        Args:
+            message: Commit message to check
+
+        Returns:
+            True if the message is a merge commit
+        """
+        first_line = message.strip().split("\n")[0].strip()
+        return (
+            first_line.startswith("Merge ")
+            or first_line.startswith("# Please enter the commit message")
+            or first_line.startswith("# On branch")
+            or first_line == ""
+        )
+
     @classmethod
     def parse(cls, message: str) -> "ConventionalCommit":
         """Parse a conventional commit message.
@@ -114,6 +132,12 @@ class ConventionalCommit:
         Raises:
             ValueError: If message doesn't match conventional format
         """
+        # Check if this is a merge commit or other non-conventional commit
+        if cls.is_merge_commit(message):
+            raise ValueError(
+                "Merge commit or non-conventional commit - skipping version bump"
+            )
+
         # Split into parts
         parts = message.strip().split("\n\n", maxsplit=2)
         header = parts[0]
@@ -124,6 +148,10 @@ class ConventionalCommit:
         # This handles cases where squashed commits have multiple commit messages
         header_lines = header.split("\n")
         first_line = header_lines[0].strip()
+
+        # Skip comment lines that start with #
+        if first_line.startswith("#") or not first_line:
+            raise ValueError("Empty or comment line - skipping version bump")
 
         if not (match := cls.HEADER_PATTERN.match(first_line)):
             raise ValueError("Invalid commit header format")

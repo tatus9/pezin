@@ -24,7 +24,12 @@ repos:
       # Run the formatter.
       - id: ruff-format
 
-  - repo: https://github.com/tatus9/pezin
-    rev: v0.1.0
+  - repo: local
     hooks:
     - id: pezin
+      name: Pezin Version Control
+      entry: python -m pezin.hooks.pre_commit
+      language: system
+      stages: [commit-msg]
+      always_run: true
+      pass_filenames: false
