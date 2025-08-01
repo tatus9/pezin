@@ -8,6 +8,7 @@ import contextlib
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -26,6 +27,20 @@ logger = get_logger()
 
 # Lock file to prevent conflicts with post-commit hook
 LOCK_FILE = ".pezin_post_commit_lock"
+
+
+def clean_commit_message(msg: str) -> str:
+    """Clean up commit message by removing Git comment lines and extra whitespace.
+
+    Args:
+        msg: Raw commit message
+
+    Returns:
+        Cleaned commit message
+    """
+    lines = msg.split("\n")
+    clean_lines = [line for line in lines if not line.strip().startswith("#")]
+    return "\n".join(clean_lines).strip()
 
 
 def convert_bump_type(bump_type: BumpType) -> Optional[VersionBumpType]:
@@ -116,8 +131,6 @@ def is_amend_commit(
         # Method 3: Check environment variables that might indicate an amend or rebase
         git_reflog_action = os.environ.get("GIT_REFLOG_ACTION", "")
 
-        logger.debug(f"GIT_REFLOG_ACTION: {git_reflog_action}")
-
         if (
             "amend" in git_reflog_action.lower()
             or "rebase" in git_reflog_action.lower()
@@ -137,7 +150,6 @@ def is_amend_commit(
 
         if head_result.returncode != 0:
             # No HEAD commit exists, so this can't be an amend
-            logger.debug("No HEAD commit exists - not an amend")
             return False
 
         # Method 4: Check for ORIG_HEAD existence AND verify it matches current HEAD
@@ -158,49 +170,31 @@ def is_amend_commit(
                 git_dir = Path(git_dir_result.stdout.strip())
             except subprocess.CalledProcessError:
                 # If we can't get git directory, skip ORIG_HEAD check
-                logger.debug(
-                    "Cannot determine git directory - skipping ORIG_HEAD check"
-                )
-                logger.debug(
-                    "Cannot determine git directory - skipping ORIG_HEAD check"
-                )
                 return False
 
             orig_head_file = git_dir / "ORIG_HEAD"
-            logger.debug(f"ORIG_HEAD file exists: {orig_head_file.exists()}")
 
             if orig_head_file.exists():
                 # Read ORIG_HEAD content
                 orig_head_sha = orig_head_file.read_text().strip()
 
-                logger.debug(f"ORIG_HEAD: {orig_head_sha}")
-                logger.debug(f"Current HEAD: {current_head_sha}")
-
                 # During amend, ORIG_HEAD equals current HEAD
                 # But also verify this is a recent operation by checking timestamps
-                import time
-
                 orig_head_mtime = orig_head_file.stat().st_mtime
                 current_time = time.time()
 
                 # Only consider ORIG_HEAD if it was modified recently (within last 60 seconds)
                 if current_time - orig_head_mtime > 60:
-                    logger.debug("ORIG_HEAD is too old - likely not a current amend")
                     return False
 
                 if orig_head_sha == current_head_sha:
                     logger.info(
                         "ORIG_HEAD matches current HEAD and is recent - amend detected"
                     )
-                    logger.info(
-                        "ORIG_HEAD matches current HEAD and is recent - amend detected"
-                    )
                     return True
-                else:
-                    logger.debug("ORIG_HEAD != HEAD - not an amend")
 
-        except (subprocess.CalledProcessError, OSError) as e:
-            logger.debug(f"Could not check ORIG_HEAD: {e}")
+        except (subprocess.CalledProcessError, OSError):
+            pass
 
         # Method 5: Compare with HEAD commit message as fallback (for legacy compatibility)
         if commit_message:
@@ -213,14 +207,6 @@ def is_amend_commit(
             head_message = result.stdout.strip()
 
             # Clean up the messages for comparison
-            # Remove Git comment lines (lines starting with #) and extra whitespace
-            def clean_commit_message(msg):
-                lines = msg.split("\n")
-                clean_lines = [
-                    line for line in lines if not line.strip().startswith("#")
-                ]
-                return "\n".join(clean_lines).strip()
-
             clean_commit_message_text = clean_commit_message(commit_message)
             clean_head_message = head_message.strip()
 
@@ -275,6 +261,11 @@ def update_version(
         # Skip version updates for fixup commits
         if ConventionalCommit.is_fixup_commit(message):
             logger.info("Fixup/squash commit - skipping version update")
+            return None
+
+        # Skip version updates for merge commits
+        if ConventionalCommit.is_merge_commit(message):
+            logger.info("Merge/git flow commit - skipping version update")
             return None
 
         commit = ConventionalCommit.parse(message)
@@ -360,6 +351,11 @@ def update_version_legacy(
             logger.info("Fixup/squash commit - skipping legacy version update")
             return None
 
+        # Skip version updates for merge commits
+        if ConventionalCommit.is_merge_commit(message):
+            logger.info("Merge/git flow commit - skipping legacy version update")
+            return None
+
         commit = ConventionalCommit.parse(message)
         logger.info(f"Commit type: {commit.type}")
 
@@ -397,8 +393,8 @@ def update_version_legacy(
                 ["git", "add", str(version_file)], capture_output=True, check=False
             )
             logger.info("Version file staged")
-        except Exception as e:
-            logger.debug(f"Git staging skipped: {e}")
+        except Exception:
+            pass
 
         return str(new_version)
 
@@ -461,8 +457,6 @@ def main(
     3. --version-file option for simple single-file setups
     """
     try:
-        logger.debug("Pezin commit-msg hook starting (legacy/fallback mode)...")
-
         repo_root = get_repo_root()
 
         # Check if post-commit hook is active to avoid conflicts
@@ -486,23 +480,13 @@ def main(
                     logger.error("Could not find commit message file")
                     sys.exit(1)
 
-                logger.debug(f"Auto-detected commit message file: {commit_msg_file}")
             except Exception as e:
                 logger.error(f"Failed to auto-detect commit message file: {e}")
                 sys.exit(1)
 
-        # Log hook arguments for debugging
-        logger.debug(
-            f"Hook arguments: file={commit_msg_file}, source={commit_source}, sha={commit_sha}"
-        )
-        logger.debug(
-            f"Config options: config_file={config_file}, version_file={version_file}"
-        )
-
         # Read commit message
         message = commit_msg_file.read_text().strip()
         if not message:
-            logger.debug("Empty commit message - exiting")
             sys.exit(0)
 
         # Check if this is a fixup or squash commit
@@ -511,16 +495,11 @@ def main(
             typer.echo("Fixup/squash commit detected - skipping version bump")
             sys.exit(0)
 
-        # Log basic info
-        logger.debug(f"Processing commit message: '{message}'")
-        logger.debug(f"Current working directory: {os.getcwd()}")
-        logger.debug(f"Commit message file: {commit_msg_file}")
-
-        # Log relevant environment variables for debugging
-        logger.debug("=== Environment Variables ===")
-        for key in sorted(os.environ.keys()):
-            if "GIT" in key.upper() and key in ["GIT_REFLOG_ACTION", "GIT_EDITOR"]:
-                logger.debug(f"ENV {key}={os.environ[key]}")
+        # Check if this is a merge commit or git flow commit
+        if ConventionalCommit.is_merge_commit(message):
+            logger.info("Merge/git flow commit detected - skipping version bump")
+            typer.echo("Merge/git flow commit detected - skipping version bump")
+            sys.exit(0)
 
         # Check if this is an amend commit using simple and reliable method
         logger.info("Starting amend detection check")
@@ -562,23 +541,28 @@ def main(
             )
 
         logger.info("Amend detection completed - proceeding with version bump")
-        logger.debug("Not an amend - proceeding with version bump")
 
-        if new_version := update_version(message, repo_root, version_file, config_file):
-            logger.info(f"Version bumped to {new_version} (legacy mode)")
-            typer.echo(f"Version bumped to {new_version} (files staged for commit)")
-        else:
-            logger.debug("No version bump needed")
-            typer.echo("No version bump needed")
+        try:
+            if new_version := update_version(
+                message, repo_root, version_file, config_file
+            ):
+                logger.info(f"Version bumped to {new_version} (legacy mode)")
+                typer.echo(f"Version bumped to {new_version} (files staged for commit)")
+            else:
+                typer.echo("No version bump needed")
+        except ValueError as e:
+            # Handle merge commits and non-conventional commits gracefully
+            if "Merge commit" in str(e) or "Invalid commit header format" in str(e):
+                logger.info(f"Skipping version bump: {e}")
+                typer.echo("Skipping version bump for non-conventional commit")
+                sys.exit(0)
+            else:
+                raise
 
-        logger.debug("Pezin commit-msg hook completed successfully")
         sys.exit(0)
 
     except Exception as e:
         logger.error(f"Hook failed: {e}")
-        import traceback
-
-        logger.debug(f"Traceback: {traceback.format_exc()}")
         sys.exit(1)
 
 
