@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
 
     - name: Install uv
       uses: astral-sh/setup-uv@v4
@@ -38,7 +38,7 @@ jobs:
     needs: test
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
 
     - name: Install uv
       uses: astral-sh/setup-uv@v4
@@ -79,7 +79,7 @@ jobs:
     needs: publish-to-pypi
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
 
     - name: Download all the dists
       uses: actions/download-artifact@v4
