@@ -190,7 +190,7 @@ wheels = [
 
 [[package]]
 name = "pezin"
-version = "0.2.1"
+version = "0.5.0"
 source = { editable = "." }
 dependencies = [
     { name = "loguru" },

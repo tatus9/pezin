@@ -1,5 +1,6 @@
 """Tests for the pre-commit hook."""
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -9,7 +10,12 @@ from typer.testing import CliRunner
 
 # from pezin.hooks.pre_commit import app
 from pezin.cli.main import app
-from pezin.hooks.pre_commit import is_amend_commit
+from pezin.hooks.pre_commit import (
+    AMEND_ENV_VAR,
+    get_auto_amend_config,
+    is_amend_commit,
+    is_amend_in_progress,
+)
 
 
 def test_pre_commit_hook_installation(pre_commit_repo):
@@ -302,3 +308,140 @@ def test_orig_head_amend_detection(tmp_path):
 
     finally:
         os.chdir(original_cwd)
+
+
+def test_is_amend_in_progress():
+    """Test environment variable based amend-in-progress detection."""
+    # Should be False by default
+    assert is_amend_in_progress() is False
+
+    # Set env var
+    os.environ[AMEND_ENV_VAR] = "1"
+    try:
+        assert is_amend_in_progress() is True
+    finally:
+        del os.environ[AMEND_ENV_VAR]
+
+    # Should be False again after cleanup
+    assert is_amend_in_progress() is False
+
+
+def test_get_auto_amend_config():
+    """Test reading auto_amend config option."""
+    # Test default (no config) - should be True
+    assert get_auto_amend_config(None, None) is True
+    assert get_auto_amend_config({}, None) is True
+
+    # Test config enabled explicitly
+    config = {"pezin": {"auto_amend": True}}
+    assert get_auto_amend_config(config, None) is True
+
+    # Test config disabled
+    config = {"pezin": {"auto_amend": False}}
+    assert get_auto_amend_config(config, None) is False
+
+    # Test CLI override - force enable
+    config = {"pezin": {"auto_amend": False}}
+    assert get_auto_amend_config(config, True) is True
+
+    # Test CLI override - force disable
+    config = {"pezin": {"auto_amend": True}}
+    assert get_auto_amend_config(config, False) is False
+
+
+def test_auto_amend_disabled_with_cli_flag(tmp_path):
+    """Test that --no-auto-amend disables auto-amend."""
+    # Create git repository to ensure proper context
+    git_repo = tmp_path / "test_repo"
+    git_repo.mkdir()
+
+    # Setup git repo
+    subprocess.run(["git", "init"], cwd=git_repo, check=True, capture_output=True)
+    subprocess.run(
+        ["git", "config", "user.name", "Test User"], cwd=git_repo, check=True
+    )
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"], cwd=git_repo, check=True
+    )
+
+    # Create version file with auto_amend enabled in config
+    version_file = git_repo / "pyproject.toml"
+    with open(version_file, "wb") as f:
+        tomli_w.dump(
+            {"project": {"version": "0.1.0"}, "tool": {"pezin": {"auto_amend": True}}},
+            f,
+        )
+
+    # Add and commit version file
+    subprocess.run(["git", "add", "pyproject.toml"], cwd=git_repo, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "chore: initial commit"], cwd=git_repo, check=True
+    )
+
+    # Create commit message file
+    msg_file = git_repo / "commit-msg"
+    msg_file.write_text("feat: add new feature")
+
+    # Run hook from git repo directory with --no-auto-amend flag
+    original_cwd = Path.cwd()
+    try:
+        os.chdir(git_repo)
+
+        runner = CliRunner()
+        result = runner.invoke(
+            app,
+            [
+                "hook",
+                str(msg_file),
+                "--config",
+                str(version_file),
+                "--skip-amend-detection",
+                "--no-auto-amend",
+            ],
+        )
+        assert result.exit_code == 0, f"Hook failed: {result.stdout}"
+        # Should show "files staged for commit" since auto-amend is disabled
+        assert "files staged for commit" in result.stdout
+
+        # Verify version bump happened
+        with open(version_file, "rb") as f:
+            version = tomli.load(f)["project"]["version"]
+            assert version == "0.2.0"
+    finally:
+        os.chdir(original_cwd)
+
+
+def test_auto_amend_env_var_prevents_infinite_loop(tmp_path):
+    """Test that PEZIN_AMENDING env var prevents hook from running."""
+    msg_file = tmp_path / "commit-msg"
+    version_file = tmp_path / "pyproject.toml"
+
+    # Create version file
+    with open(version_file, "wb") as f:
+        tomli_w.dump({"project": {"version": "0.1.0"}}, f)
+
+    msg_file.write_text("feat: add new feature")
+
+    # Set the env var to simulate being inside an amend operation
+    os.environ[AMEND_ENV_VAR] = "1"
+    try:
+        runner = CliRunner()
+        result = runner.invoke(
+            app,
+            [
+                "hook",
+                str(msg_file),
+                "--config",
+                str(version_file),
+                "--skip-amend-detection",
+            ],
+        )
+        # Should exit successfully but not bump version
+        assert result.exit_code == 0
+
+        # Version should NOT have changed since hook should have exited early
+        with open(version_file, "rb") as f:
+            version = tomli.load(f)["project"]["version"]
+            assert version == "0.1.0"
+    finally:
+        del os.environ[AMEND_ENV_VAR]

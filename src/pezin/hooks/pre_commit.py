@@ -28,6 +28,75 @@ logger = get_logger()
 # Lock file to prevent conflicts with post-commit hook
 LOCK_FILE = ".pezin_post_commit_lock"
 
+# Environment variable to detect recursive amend calls
+AMEND_ENV_VAR = "PEZIN_AMENDING"
+
+
+def is_amend_in_progress() -> bool:
+    """Check if we're currently in an auto-amend operation.
+
+    This prevents infinite loops when the amend triggers the hook again.
+
+    Returns:
+        True if an amend operation is in progress
+    """
+    return os.environ.get(AMEND_ENV_VAR) == "1"
+
+
+def get_auto_amend_config(config: Optional[dict], cli_override: Optional[bool]) -> bool:
+    """Determine if auto-amend should be performed.
+
+    Args:
+        config: The pezin configuration dictionary
+        cli_override: CLI flag override (None means use config)
+
+    Returns:
+        True if auto-amend should be performed (default: True)
+    """
+    # CLI override takes precedence
+    if cli_override is not None:
+        return cli_override
+
+    # Check config - default is True (enabled)
+    if config and "pezin" in config:
+        return config["pezin"].get("auto_amend", True)
+
+    return True
+
+
+def perform_auto_amend(repo_root: Path) -> bool:
+    """Perform auto-amend of the current commit.
+
+    Args:
+        repo_root: Repository root directory
+
+    Returns:
+        True if amend succeeded, False otherwise
+    """
+    try:
+        # Set environment variable to prevent recursive hook execution
+        env = os.environ.copy()
+        env[AMEND_ENV_VAR] = "1"
+
+        result = subprocess.run(
+            ["git", "commit", "--amend", "--no-edit"],
+            capture_output=True,
+            text=True,
+            cwd=repo_root,
+            env=env,
+        )
+
+        if result.returncode == 0:
+            logger.info("Successfully amended commit with version changes")
+            return True
+        else:
+            logger.error(f"Git amend failed: {result.stderr}")
+            return False
+
+    except Exception as e:
+        logger.error(f"Failed to perform auto-amend: {e}")
+        return False
+
 
 def clean_commit_message(msg: str) -> str:
     """Clean up commit message by removing Git comment lines and extra whitespace.
@@ -444,6 +513,11 @@ def main(
         help="Skip amend detection (useful for testing)",
         hidden=True,
     ),
+    auto_amend: Optional[bool] = typer.Option(
+        None,
+        "--auto-amend/--no-auto-amend",
+        help="Override auto-amend behavior (amend commit after staging version files)",
+    ),
 ) -> None:
     """Run the version bump hook with flexible configuration support.
 
@@ -457,6 +531,13 @@ def main(
     3. --version-file option for simple single-file setups
     """
     try:
+        # Check if we're in a recursive amend call
+        if is_amend_in_progress():
+            logger.info(
+                "Auto-amend in progress - skipping hook to prevent infinite loop"
+            )
+            sys.exit(0)
+
         repo_root = get_repo_root()
 
         # Check if post-commit hook is active to avoid conflicts
@@ -546,8 +627,30 @@ def main(
             if new_version := update_version(
                 message, repo_root, version_file, config_file
             ):
-                logger.info(f"Version bumped to {new_version} (legacy mode)")
-                typer.echo(f"Version bumped to {new_version} (files staged for commit)")
+                logger.info(f"Version bumped to {new_version}")
+
+                # Read config for auto-amend setting
+                config = None
+                if config_file:
+                    try:
+                        config = read_config(config_file)
+                    except Exception:
+                        pass
+
+                should_auto_amend = get_auto_amend_config(config, auto_amend)
+
+                if should_auto_amend:
+                    if perform_auto_amend(repo_root):
+                        typer.echo(f"Version bumped to {new_version} (commit amended)")
+                    else:
+                        typer.echo(
+                            f"Version bumped to {new_version} "
+                            "(amend failed - files staged for commit)"
+                        )
+                else:
+                    typer.echo(
+                        f"Version bumped to {new_version} (files staged for commit)"
+                    )
             else:
                 typer.echo("No version bump needed")
         except ValueError as e:

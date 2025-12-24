@@ -640,6 +640,11 @@ def hook_command(
         help="Skip amend detection (useful for testing)",
         hidden=True,
     ),
+    auto_amend: Optional[bool] = typer.Option(
+        None,
+        "--auto-amend/--no-auto-amend",
+        help="Override auto-amend behavior (amend commit after staging version files)",
+    ),
 ) -> None:
     """Process a commit message file for version bumping.
 
@@ -662,6 +667,7 @@ def hook_command(
             config_file=config_file,
             version_file=version_file,
             skip_amend_detection=skip_amend_detection,
+            auto_amend=auto_amend,
         )
 
     except typer.Exit:
