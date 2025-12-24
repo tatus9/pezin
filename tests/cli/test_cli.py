@@ -371,3 +371,94 @@ def test_project_version_detection_no_config(tmp_path):
 
     finally:
         os.chdir(original_cwd)
+
+
+def test_version_ci_flag_outputs_raw_version(test_project_files, cli_runner):
+    """Test that -v --ci outputs only the raw version number."""
+    import os
+
+    project_dir, _config_file = test_project_files("pyproject", "my-project", "15.0.5")
+
+    original_cwd = os.getcwd()
+    try:
+        os.chdir(project_dir)
+
+        result = cli_runner.invoke(app, ["-v", "--ci"])
+        assert result.exit_code == 0
+        # Should output only the version, nothing else
+        output = result.output.strip()
+        assert output == "15.0.5"
+        # Should not contain project name or pezin
+        assert "my-project" not in output
+        assert "pezin" not in output
+
+    finally:
+        os.chdir(original_cwd)
+
+
+def test_version_command_ci_flag_outputs_raw_version(test_project_files, cli_runner):
+    """Test that version --ci outputs only the raw version number."""
+    import os
+
+    project_dir, _config_file = test_project_files("pyproject", "my-project", "2.3.4")
+
+    original_cwd = os.getcwd()
+    try:
+        os.chdir(project_dir)
+
+        result = cli_runner.invoke(app, ["version", "--ci"])
+        assert result.exit_code == 0
+        # Should output only the version, nothing else
+        output = result.output.strip()
+        assert output == "2.3.4"
+
+    finally:
+        os.chdir(original_cwd)
+
+
+def test_version_ci_flag_no_project_exits_error(tmp_path, cli_runner):
+    """Test that -v --ci exits with error when no project is found."""
+    import os
+
+    # Create empty directory with no config files
+    empty_dir = tmp_path / "empty"
+    empty_dir.mkdir()
+
+    original_cwd = os.getcwd()
+    try:
+        os.chdir(empty_dir)
+
+        result = cli_runner.invoke(app, ["-v", "--ci"])
+        assert result.exit_code == 1
+        # Should contain error message
+        output = strip_ansi_codes(result.output)
+        assert "Error" in output
+        assert "No project version found" in output
+
+    finally:
+        os.chdir(original_cwd)
+
+
+def test_version_ci_flag_no_formatting(test_project_files, cli_runner):
+    """Test that CI output has no Rich formatting or extra text."""
+    import os
+
+    project_dir, _config_file = test_project_files("pyproject", "test-proj", "1.0.0")
+
+    original_cwd = os.getcwd()
+    try:
+        os.chdir(project_dir)
+
+        result = cli_runner.invoke(app, ["-v", "--ci"])
+        assert result.exit_code == 0
+
+        output = result.output.strip()
+        # Should be just the version with no other characters
+        assert output == "1.0.0"
+        # No multiple lines
+        assert "\n" not in output
+        # No ANSI codes
+        assert output == strip_ansi_codes(output)
+
+    finally:
+        os.chdir(original_cwd)

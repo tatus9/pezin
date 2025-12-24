@@ -18,7 +18,9 @@ from ..logging import get_logger, setup_logging
 from . import commands, hooks
 
 # Check if this is a version-only command
-is_version_command = any(arg in ["--version", "-v", "version"] for arg in sys.argv[1:])
+is_version_command = any(
+    arg in ["--version", "-v", "version", "--ci"] for arg in sys.argv[1:]
+)
 
 if not is_version_command:
     setup_logging()
@@ -42,7 +44,7 @@ logger = get_logger()
 app = typer.Typer(
     help="Version management and changelog tool for semantic versioning",
     add_completion=False,
-    no_args_is_help=True,
+    invoke_without_command=True,
 )
 
 console = Console()
@@ -188,33 +190,65 @@ def validate_prerelease(value: Optional[str]) -> Optional[str]:
     return value
 
 
-def version_callback(value: bool) -> None:
-    """Global version callback."""
-    if value:
-        # Try to get current project info first
-        project_name, project_version = get_current_project_info()
-        pezin_version = get_pezin_version()
+def _show_version(ci_mode: bool = False) -> None:
+    """Display version information and exit.
 
-        # Show project version if we found one and it's not pezin itself
+    Args:
+        ci_mode: If True, output only the raw project version for CI pipelines.
+    """
+    project_name, project_version = get_current_project_info()
+    pezin_version = get_pezin_version()
+
+    if ci_mode:
+        # CI mode: output only raw project version
         if project_version and project_name != "pezin":
-            if project_name:
-                console.print(f"{project_name} {project_version}")
-            else:
-                console.print(project_version)
+            print(project_version)
+            raise typer.Exit()
+        else:
+            console.print(
+                "[red]Error:[/red] No project version found in current directory",
+                style="bold",
+            )
+            raise typer.Exit(code=1)
 
-        # Always show pezin version
-        console.print(f"pezin {pezin_version}")
-        raise typer.Exit()
+    # Normal mode: show project and pezin versions
+    if project_version and project_name != "pezin":
+        if project_name:
+            console.print(f"{project_name} {project_version}")
+        else:
+            console.print(project_version)
+
+    # Always show pezin version
+    console.print(f"pezin {pezin_version}")
+    raise typer.Exit()
 
 
 @app.command(name="version")
-def version_command() -> None:
+def version_command(
+    ci: bool = typer.Option(
+        False,
+        "--ci",
+        help="Output only raw project version (for CI pipelines)",
+    ),
+) -> None:
     """Show pezin version and exit."""
     # Try to get current project info first
     project_name, project_version = get_current_project_info()
     pezin_version = get_pezin_version()
 
-    # Show project version if we found one and it's not pezin itself
+    # CI mode: output only raw project version
+    if ci:
+        if project_version and project_name != "pezin":
+            print(project_version)
+        else:
+            console.print(
+                "[red]Error:[/red] No project version found in current directory",
+                style="bold",
+            )
+            raise typer.Exit(code=1)
+        return
+
+    # Normal mode: show project and pezin versions
     if project_version and project_name != "pezin":
         if project_name:
             console.print(f"{project_name} {project_version}")
@@ -227,17 +261,28 @@ def version_command() -> None:
 
 @app.callback()
 def main(
-    version: Optional[bool] = typer.Option(
-        None,
+    ctx: typer.Context,
+    version: bool = typer.Option(
+        False,
         "--version",
         "-v",
-        callback=version_callback,
-        is_eager=True,
         help="Show version and exit",
+    ),
+    ci: bool = typer.Option(
+        False,
+        "--ci",
+        help="Output only raw project version (use with -v for CI pipelines)",
     ),
 ) -> None:
     """Version management and changelog tool for semantic versioning."""
-    pass
+    # Handle version display
+    if version or ci:
+        _show_version(ci_mode=ci)
+
+    # If no subcommand and no flags, show help
+    if ctx.invoked_subcommand is None:
+        console.print(ctx.get_help())
+        raise typer.Exit()
 
 
 def _is_amend_commit_with_args(
