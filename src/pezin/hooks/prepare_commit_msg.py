@@ -45,6 +45,13 @@ def is_amend_commit(
     Returns:
         True if this is an amend operation, False otherwise
     """
+    # First, try to get from environment variables (pre-commit framework)
+    # Pre-commit passes git hook arguments as env vars, not CLI args
+    if commit_source is None:
+        commit_source = os.environ.get("PRE_COMMIT_COMMIT_MSG_SOURCE")
+    if commit_sha is None:
+        commit_sha = os.environ.get("PRE_COMMIT_COMMIT_OBJECT_NAME")
+
     logger.debug("Starting amend detection for prepare-commit-msg")
     logger.debug(f"Commit source: {commit_source}")
     logger.debug(f"Commit SHA: {commit_sha}")
@@ -172,6 +179,17 @@ def main(
 
 def commit_analysis(commit_msg_file, commit_source, commit_sha):
     logger.debug("Pezin prepare-commit-msg hook starting...")
+
+    # Get from environment variables if not provided via CLI
+    # Pre-commit framework passes git hook arguments as env vars, not CLI args
+    if commit_source is None:
+        commit_source = os.environ.get("PRE_COMMIT_COMMIT_MSG_SOURCE")
+    if commit_sha is None:
+        commit_sha = os.environ.get("PRE_COMMIT_COMMIT_OBJECT_NAME")
+    if commit_msg_file is None:
+        env_file = os.environ.get("PRE_COMMIT_COMMIT_MSG_FILE")
+        if env_file:
+            commit_msg_file = Path(env_file)
 
     # Log hook arguments for debugging
     logger.debug(
