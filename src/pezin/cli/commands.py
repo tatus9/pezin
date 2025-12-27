@@ -85,6 +85,24 @@ def read_config(config_file: Path) -> Dict[str, Any]:
                         )
                         config["pezin"]["version_files"][i]["path"] = str(abs_path)
 
+        # Handle monorepo services configuration
+        if "services" in config["pezin"]:
+            services = config["pezin"]["services"]
+            for i, service in enumerate(services):
+                if isinstance(service, dict) and "version_files" in service:
+                    for j, file_config in enumerate(service["version_files"]):
+                        if isinstance(file_config, dict) and "path" in file_config:
+                            file_path = Path(file_config["path"])
+                            if not file_path.is_absolute():
+                                abs_path = resolve_path(file_path, base_dir)
+                                logger.debug(
+                                    f"Making services[{i}].version_files[{j}] path "
+                                    f"absolute: {file_path} -> {abs_path}"
+                                )
+                                config["pezin"]["services"][i]["version_files"][j][
+                                    "path"
+                                ] = str(abs_path)
+
         if "changelog_file" in config["pezin"]:
             changelog_path = Path(config["pezin"]["changelog_file"])
             if not changelog_path.is_absolute():

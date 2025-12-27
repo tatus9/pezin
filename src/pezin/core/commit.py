@@ -201,6 +201,21 @@ class ConventionalCommit:
             None,
         )
 
+    def get_scopes(self) -> List[str]:
+        """Parse scope into list of service names.
+
+        Supports single and multi-scope conventional commits:
+        - Single scope: "feat(backend):" -> ["backend"]
+        - Multi-scope: "feat(backend,local_server):" -> ["backend", "local_server"]
+        - No scope: "feat:" -> []
+
+        Returns:
+            List of scope names, empty if no scope present
+        """
+        if not self.scope:
+            return []
+        return [s.strip() for s in self.scope.split(",") if s.strip()]
+
     def get_bump_type(self) -> BumpType:
         """Determine version bump type from commit.
 

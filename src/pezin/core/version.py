@@ -19,16 +19,21 @@ Example:
     ```
 """
 
+from __future__ import annotations
+
 import re
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 from packaging.version import Version as PackagingVersion
 
 from ..logging import get_logger
+
+if TYPE_CHECKING:
+    from .config import MonorepoConfig, ServiceConfig
 
 logger = get_logger()
 
@@ -445,3 +450,150 @@ class VersionManager:
                 configs.append(VersionFileConfig(**file_config))
 
         return cls(configs)
+
+
+@dataclass
+class ServiceVersionResult:
+    """Result of a service version bump operation.
+
+    Attributes:
+        service_name: Name of the service that was bumped
+        old_version: Version before bump
+        new_version: Version after bump
+        updated_files: List of file paths that were updated
+        tag_name: Git tag name to create (e.g., "backend-v1.2.3")
+    """
+
+    service_name: str
+    old_version: Optional[Version]
+    new_version: Version
+    updated_files: List[str]
+    tag_name: str
+
+
+class ServiceVersionManager:
+    """Manages version updates for monorepo services.
+
+    This class coordinates version bumping across multiple independent
+    services in a monorepo, where each service maintains its own version.
+    """
+
+    def __init__(self, config: MonorepoConfig):
+        """Initialize with monorepo configuration.
+
+        Args:
+            config: MonorepoConfig with service definitions
+        """
+        self.config = config
+        self._service_managers: Dict[str, VersionManager] = {}
+        self._setup_managers()
+
+    def _setup_managers(self):
+        """Create VersionManager for each service."""
+        for service in self.config.services:
+            if service.version_files:
+                self._service_managers[service.name] = VersionManager(
+                    service.version_files
+                )
+
+    def get_services_for_scopes(
+        self, scopes: List[str]
+    ) -> Tuple[List[ServiceConfig], List[str]]:
+        """Map commit scopes to service configurations.
+
+        Args:
+            scopes: List of scope names from commit message
+
+        Returns:
+            Tuple of (matched services, unknown scopes)
+        """
+        matched = self.config.get_services_for_scopes(scopes)
+        known_names = {s.name for s in matched}
+        unknown = [s for s in scopes if s not in known_names]
+
+        return matched, unknown
+
+    def get_default_service(self) -> Optional[ServiceConfig]:
+        """Get the default service for commits without scope.
+
+        Returns:
+            ServiceConfig if default_service is configured, None otherwise
+        """
+        if self.config.default_service:
+            return self.config.get_service(self.config.default_service)
+        return None
+
+    def bump_service(
+        self,
+        service: ServiceConfig,
+        bump_type: VersionBumpType,
+        prerelease: Optional[str] = None,
+    ) -> Optional[ServiceVersionResult]:
+        """Bump version for a single service.
+
+        Args:
+            service: Service configuration to bump
+            bump_type: Type of version bump
+            prerelease: Optional pre-release label
+
+        Returns:
+            ServiceVersionResult with bump details, or None if bump failed
+        """
+        manager = self._service_managers.get(service.name)
+        if not manager:
+            logger.warning(f"No version manager for service: {service.name}")
+            return None
+
+        current = manager.get_primary_version()
+        if not current:
+            logger.warning(f"Could not read version for service: {service.name}")
+            return None
+
+        new_version = current.bump(bump_type, prerelease)
+        updated_files = manager.write_versions(new_version)
+        tag_name = service.get_tag_name(str(new_version))
+
+        return ServiceVersionResult(
+            service_name=service.name,
+            old_version=current,
+            new_version=new_version,
+            updated_files=updated_files,
+            tag_name=tag_name,
+        )
+
+    def bump_services(
+        self,
+        services: List[ServiceConfig],
+        bump_type: VersionBumpType,
+        prerelease: Optional[str] = None,
+    ) -> List[ServiceVersionResult]:
+        """Bump versions for multiple services.
+
+        Args:
+            services: List of service configurations to bump
+            bump_type: Type of version bump (same for all services)
+            prerelease: Optional pre-release label
+
+        Returns:
+            List of ServiceVersionResult for successful bumps
+        """
+        results = []
+        for service in services:
+            if result := self.bump_service(service, bump_type, prerelease):
+                results.append(result)
+        return results
+
+    @classmethod
+    def from_config(cls, config: Dict) -> "ServiceVersionManager":
+        """Create ServiceVersionManager from configuration dictionary.
+
+        Args:
+            config: Pezin configuration dictionary with monorepo settings
+
+        Returns:
+            ServiceVersionManager instance
+        """
+        from .config import MonorepoConfig
+
+        monorepo_config = MonorepoConfig.from_dict(config)
+        return cls(monorepo_config)

@@ -4,14 +4,21 @@ import contextlib
 import os
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 import typer
 
 from ..cli.commands import read_config
 from ..core.commit import BumpType, ConventionalCommit
-from ..core.version import VersionBumpType, VersionFileConfig, VersionManager
+from ..core.config import is_monorepo_mode
+from ..core.version import (
+    ServiceVersionManager,
+    VersionBumpType,
+    VersionFileConfig,
+    VersionManager,
+)
 from ..logging import get_logger, setup_logging
 
 # Set up centralized logging
@@ -148,12 +155,206 @@ def find_config_file(cwd: Path) -> Optional[Path]:
     return None
 
 
+@dataclass
+class VersionUpdateResult:
+    """Result of a version update operation.
+
+    Attributes:
+        versions: List of new version strings
+        tags: List of tag names to create
+        is_monorepo: Whether this was a monorepo update
+    """
+
+    versions: List[str]
+    tags: List[str]
+    is_monorepo: bool = False
+
+
+def update_monorepo_versions(
+    commit: ConventionalCommit,
+    version_bump_type: VersionBumpType,
+    pezin_config: dict,
+    repo_root: Path,
+) -> Optional[VersionUpdateResult]:
+    """Update versions for monorepo services based on commit scope.
+
+    Args:
+        commit: Parsed conventional commit
+        version_bump_type: Type of version bump to perform
+        pezin_config: Pezin configuration dictionary
+        repo_root: Repository root path
+
+    Returns:
+        VersionUpdateResult with updated versions and tags, or None if no update
+    """
+    try:
+        service_manager = ServiceVersionManager.from_config(pezin_config)
+        scopes = commit.get_scopes()
+
+        # Get services to bump
+        if scopes:
+            services, unknown = service_manager.get_services_for_scopes(scopes)
+            if unknown:
+                logger.warning(f"Unknown scopes (no matching services): {unknown}")
+        else:
+            # No scope provided
+            if service_manager.config.require_scope:
+                logger.error("Monorepo mode requires a scope in commit message")
+                return None
+
+            if default_service := service_manager.get_default_service():
+                services = [default_service]
+                logger.info(f"Using default service: {default_service.name}")
+            else:
+                logger.info("No scope and no default service - skipping version bump")
+                return None
+
+        if not services:
+            logger.info("No services matched for scope(s) - skipping version bump")
+            return None
+
+        # Bump versions for matched services
+        prerelease = commit.get_prerelease_label()
+        results = service_manager.bump_services(services, version_bump_type, prerelease)
+
+        if not results:
+            logger.warning("No versions were bumped")
+            return None
+
+        # Collect all updated files and stage them
+        all_updated_files = []
+        for result in results:
+            all_updated_files.extend(result.updated_files)
+            logger.info(
+                f"Service {result.service_name}: "
+                f"{result.old_version} -> {result.new_version}"
+            )
+
+        # Stage all updated files
+        for file_path in all_updated_files:
+            try:
+                subprocess.run(
+                    ["git", "add", file_path],
+                    capture_output=True,
+                    check=True,
+                    cwd=repo_root,
+                )
+                logger.info(f"Staged file for amendment: {file_path}")
+            except subprocess.CalledProcessError as e:
+                logger.warning(f"Failed to stage {file_path}: {e}")
+
+        # Amend the commit
+        subprocess.run(
+            ["git", "commit", "--amend", "--no-edit"],
+            capture_output=True,
+            check=True,
+            cwd=repo_root,
+        )
+        logger.info("Amended commit with version changes")
+
+        return VersionUpdateResult(
+            versions=[str(r.new_version) for r in results],
+            tags=[r.tag_name for r in results],
+            is_monorepo=True,
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to update monorepo versions: {e}")
+        return None
+
+
+def update_single_version(
+    commit: ConventionalCommit,
+    version_bump_type: VersionBumpType,
+    pezin_config: dict,
+    config_file: Path,
+    repo_root: Path,
+) -> Optional[VersionUpdateResult]:
+    """Update version for single-repo mode (original behavior).
+
+    Args:
+        commit: Parsed conventional commit
+        version_bump_type: Type of version bump to perform
+        pezin_config: Pezin configuration dictionary
+        config_file: Path to configuration file
+        repo_root: Repository root path
+
+    Returns:
+        VersionUpdateResult with updated version and tag, or None if no update
+    """
+    try:
+        if pezin_config:
+            version_manager = VersionManager.from_config(pezin_config)
+        else:
+            version_manager = VersionManager([VersionFileConfig(path=config_file)])
+
+        # Get current version
+        current_version = version_manager.get_primary_version()
+        if not current_version:
+            raise ValueError("No version found in configured files")
+
+        logger.info(f"Current version: {current_version}")
+
+        # Calculate new version
+        prerelease = commit.get_prerelease_label()
+        new_version = current_version.bump(version_bump_type, prerelease)
+        logger.info(f"Bumping to: {new_version}")
+
+        # Update all configured files
+        updated_files = version_manager.write_versions(new_version)
+        logger.info(f"Updated files: {updated_files}")
+
+        # Add all updated files to staging
+        for file_path in updated_files:
+            try:
+                subprocess.run(
+                    ["git", "add", file_path],
+                    capture_output=True,
+                    check=True,
+                    cwd=repo_root,
+                )
+                logger.info(f"Staged file for amendment: {file_path}")
+            except subprocess.CalledProcessError as e:
+                logger.warning(f"Failed to stage {file_path}: {e}")
+
+        # Amend the commit with the version changes
+        subprocess.run(
+            ["git", "commit", "--amend", "--no-edit"],
+            capture_output=True,
+            check=True,
+            cwd=repo_root,
+        )
+        logger.info("Amended commit with version changes")
+
+        return VersionUpdateResult(
+            versions=[str(new_version)],
+            tags=[f"v{new_version}"],
+            is_monorepo=False,
+        )
+
+    except Exception as e:
+        logger.error(f"Failed to update version: {e}")
+        return None
+
+
 def update_version_and_amend(
     message: str,
     repo_root: Path,
     config_file: Optional[Path] = None,
-) -> Optional[str]:
-    """Update version files and amend the commit with changes."""
+) -> Optional[VersionUpdateResult]:
+    """Update version files and amend the commit with changes.
+
+    Supports both single-repo and monorepo modes. In monorepo mode,
+    commit scopes are used to determine which services to bump.
+
+    Args:
+        message: Commit message
+        repo_root: Repository root path
+        config_file: Optional path to configuration file
+
+    Returns:
+        VersionUpdateResult with updated versions and tags, or None if no update
+    """
     try:
         # Skip version updates for fixup commits
         if ConventionalCommit.is_fixup_commit(message):
@@ -181,66 +382,40 @@ def update_version_and_amend(
             logger.warning(f"Failed to read config from {config_file}: {e}")
             config = {}
 
-        # Create VersionManager
-        try:
-            if config and "pezin" in config and config["pezin"]:
-                version_manager = VersionManager.from_config(config["pezin"])
-            else:
-                version_manager = VersionManager([VersionFileConfig(path=config_file)])
+        pezin_config = config.get("pezin", {}) if config else {}
 
-            # Get current version
-            current_version = version_manager.get_primary_version()
-            if not current_version:
-                raise ValueError("No version found in configured files")
-
-            logger.info(f"Current version: {current_version}")
-
-            # Calculate new version
-            prerelease = commit.get_prerelease_label()
-            new_version = current_version.bump(version_bump_type, prerelease)
-            logger.info(f"Bumping to: {new_version}")
-
-            # Update all configured files
-            updated_files = version_manager.write_versions(new_version)
-            logger.info(f"Updated files: {updated_files}")
-
-            # Add all updated files to staging
-            for file_path in updated_files:
-                try:
-                    subprocess.run(
-                        ["git", "add", file_path],
-                        capture_output=True,
-                        check=True,
-                        cwd=repo_root,
-                    )
-                    logger.info(f"Staged file for amendment: {file_path}")
-                except subprocess.CalledProcessError as e:
-                    logger.warning(f"Failed to stage {file_path}: {e}")
-
-            # Amend the commit with the version changes
-            subprocess.run(
-                ["git", "commit", "--amend", "--no-edit"],
-                capture_output=True,
-                check=True,
-                cwd=repo_root,
+        # Check if monorepo mode
+        if is_monorepo_mode(pezin_config):
+            logger.info("Monorepo mode detected")
+            return update_monorepo_versions(
+                commit, version_bump_type, pezin_config, repo_root
             )
-            logger.info("Amended commit with version changes")
-
-            return str(new_version)
-
-        except Exception as e:
-            logger.error(f"Failed to update version: {e}")
-            return None
+        else:
+            return update_single_version(
+                commit, version_bump_type, pezin_config, config_file, repo_root
+            )
 
     except Exception as e:
         logger.error(f"Failed to parse commit or update version: {e}")
         return None
 
 
-def create_git_tag(version: str, repo_root: Path) -> bool:
-    """Create a git tag for the new version."""
+def create_git_tag(
+    version: str, repo_root: Path, tag_name: Optional[str] = None
+) -> bool:
+    """Create a git tag for the new version.
+
+    Args:
+        version: Version string for the tag message
+        repo_root: Repository root path
+        tag_name: Custom tag name (default: "v{version}")
+
+    Returns:
+        True if tag was created, False if already exists or failed
+    """
     try:
-        tag_name = f"v{version}"
+        if tag_name is None:
+            tag_name = f"v{version}"
 
         # Check if tag already exists
         result = subprocess.run(
@@ -350,15 +525,22 @@ def core_flow(config_file, create_tag):
 
         logger.debug(f"Processing commit message: '{message}'")
 
-        if new_version := update_version_and_amend(message, repo_root, config_file):
-            logger.info(f"Version bumped to {new_version}")
-            typer.echo(f"Version bumped to {new_version}")
+        if result := update_version_and_amend(message, repo_root, config_file):
+            # Handle version bump result
+            for version in result.versions:
+                logger.info(f"Version bumped to {version}")
+                typer.echo(f"Version bumped to {version}")
 
             if create_tag:
-                if create_git_tag(new_version, repo_root):
-                    typer.echo(f"Created tag: v{new_version}")
-                else:
-                    typer.echo(f"Tag v{new_version} already exists or failed to create")
+                # Create tags (use custom tag names for monorepo mode)
+                for i, tag_name in enumerate(result.tags):
+                    version = (
+                        result.versions[i] if i < len(result.versions) else tag_name
+                    )
+                    if create_git_tag(version, repo_root, tag_name):
+                        typer.echo(f"Created tag: {tag_name}")
+                    else:
+                        typer.echo(f"Tag {tag_name} already exists or failed to create")
         else:
             logger.debug("No version bump needed")
 
