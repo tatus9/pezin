@@ -29,6 +29,22 @@ logger = get_logger()
 LOCK_FILE = ".pezin_post_commit_lock"
 
 
+def echo_to_terminal(message: str) -> None:
+    """Write message directly to terminal, bypassing pre-commit's capture.
+
+    Pre-commit framework captures stdout/stderr from hooks. To ensure user
+    feedback is visible, we write directly to /dev/tty when available.
+    Falls back to stderr if tty is not available.
+    """
+    try:
+        with open("/dev/tty", "w") as tty:
+            tty.write(f"{message}\n")
+            tty.flush()
+    except (OSError, IOError):
+        # Fallback to stderr if /dev/tty is not available (e.g., in CI)
+        typer.echo(message, err=True)
+
+
 def convert_bump_type(bump_type: BumpType) -> Optional[VersionBumpType]:
     """Convert BumpType to VersionBumpType."""
     if bump_type == BumpType.NONE:
@@ -243,9 +259,9 @@ def update_monorepo_versions(
             except subprocess.CalledProcessError as e:
                 logger.warning(f"Failed to stage {file_path}: {e}")
 
-        # Amend the commit
+        # Amend the commit (skip hooks since original commit already passed them)
         subprocess.run(
-            ["git", "commit", "--amend", "--no-edit"],
+            ["git", "commit", "--amend", "--no-edit", "--no-verify"],
             capture_output=True,
             check=True,
             cwd=repo_root,
@@ -317,9 +333,9 @@ def update_single_version(
             except subprocess.CalledProcessError as e:
                 logger.warning(f"Failed to stage {file_path}: {e}")
 
-        # Amend the commit with the version changes
+        # Amend the commit with the version changes (skip hooks since original passed)
         subprocess.run(
-            ["git", "commit", "--amend", "--no-edit"],
+            ["git", "commit", "--amend", "--no-edit", "--no-verify"],
             capture_output=True,
             check=True,
             cwd=repo_root,
@@ -474,6 +490,7 @@ def main(
         core_flow(config_file, create_tag)
     except Exception as e:
         logger.error(f"Post-commit hook failed: {e}")
+        echo_to_terminal(f"[pezin] Error: {e}")
         # Always remove lock on error
         with contextlib.suppress(Exception):
             remove_lock(get_repo_root())
@@ -488,6 +505,7 @@ def core_flow(config_file, create_tag):
     # Check if we should skip this hook
     if should_skip_hook():
         logger.info("Skipping post-commit hook")
+        echo_to_terminal("[pezin] Skipping: merge/rebase operation detected")
         sys.exit(0)
 
     # Check for skip flag from prepare-commit-msg hook (for amend detection)
@@ -495,6 +513,7 @@ def core_flow(config_file, create_tag):
     if skip_flag.exists():
         reason = skip_flag.read_text().strip()
         logger.info(f"Skip flag found: {reason} - skipping version bump")
+        echo_to_terminal(f"[pezin] Skipping: {reason} detected")
         try:
             skip_flag.unlink()
             logger.debug("Removed skip flag")
@@ -505,6 +524,7 @@ def core_flow(config_file, create_tag):
     # Check for lock to prevent infinite loops
     if is_lock_active(repo_root):
         logger.info("Post-commit lock active - skipping to prevent infinite loop")
+        echo_to_terminal("[pezin] Skipping: already processing (lock active)")
         sys.exit(0)
 
     # Create lock
@@ -529,7 +549,7 @@ def core_flow(config_file, create_tag):
             # Handle version bump result
             for version in result.versions:
                 logger.info(f"Version bumped to {version}")
-                typer.echo(f"Version bumped to {version}")
+                echo_to_terminal(f"[pezin] Version bumped to {version}")
 
             if create_tag:
                 # Create tags (use custom tag names for monorepo mode)
@@ -538,10 +558,23 @@ def core_flow(config_file, create_tag):
                         result.versions[i] if i < len(result.versions) else tag_name
                     )
                     if create_git_tag(version, repo_root, tag_name):
-                        typer.echo(f"Created tag: {tag_name}")
+                        echo_to_terminal(f"[pezin] Created tag: {tag_name}")
                     else:
-                        typer.echo(f"Tag {tag_name} already exists or failed to create")
+                        echo_to_terminal(
+                            f"[pezin] Tag {tag_name} already exists or failed to create"
+                        )
         else:
+            # Parse commit to provide helpful feedback about why no bump occurred
+            try:
+                commit = ConventionalCommit.parse(message)
+                echo_to_terminal(
+                    f"[pezin] No version bump: '{commit.type.value}' "
+                    "commits don't trigger version bumps"
+                )
+            except Exception:
+                echo_to_terminal(
+                    "[pezin] No version bump: commit doesn't match conventions"
+                )
             logger.debug("No version bump needed")
 
     finally:

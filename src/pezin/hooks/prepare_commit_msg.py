@@ -17,6 +17,22 @@ setup_logging()
 logger = get_logger()
 
 
+def echo_to_terminal(message: str) -> None:
+    """Write message directly to terminal, bypassing pre-commit's capture.
+
+    Pre-commit framework captures stdout/stderr from hooks. To ensure user
+    feedback is visible, we write directly to /dev/tty when available.
+    Falls back to stderr if tty is not available.
+    """
+    try:
+        with open("/dev/tty", "w") as tty:
+            tty.write(f"{message}\n")
+            tty.flush()
+    except (OSError, IOError):
+        # Fallback to stderr if /dev/tty is not available (e.g., in CI)
+        typer.echo(message, err=True)
+
+
 def get_repo_root() -> Path:
     """Get the Git repository root directory."""
     try:
@@ -234,6 +250,7 @@ def commit_analysis(commit_msg_file, commit_source, commit_sha):
             logger.debug(f"Created skip flag: {skip_flag}")
         except Exception as e:
             logger.warning(f"Failed to create skip flag: {e}")
+        echo_to_terminal("[pezin] Amend detected - version bump will be skipped")
         sys.exit(0)
 
     # Read commit message
@@ -254,6 +271,7 @@ def commit_analysis(commit_msg_file, commit_source, commit_sha):
             logger.debug(f"Created skip flag: {skip_flag}")
         except Exception as e:
             logger.warning(f"Failed to create skip flag: {e}")
+        echo_to_terminal("[pezin] Fixup/squash commit - version bump will be skipped")
         sys.exit(0)
 
     # Log basic info
