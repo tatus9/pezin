@@ -95,8 +95,22 @@ jobs:
       id: changelog
       run: |
         if [ -f CHANGELOG.md ]; then
-          # Extract content between the first two version headers
-          awk '/^## \[?v?[0-9]/ {if(++count==2) exit} count==1 {print}' CHANGELOG.md > release_notes.md
+          # Extract the section for THIS tag (falls back to the newest
+          # section when the tag has no entry).
+          TAG="${{ steps.tag.outputs.tag_name }}"
+          TAG="${TAG#v}"  # CHANGELOG headers use bare versions ([0.8.2])
+          awk -v tag="$TAG" '
+            /^## \[/ {
+              if (in_section) { exit }
+              in_section = index($0, "[" tag "]") > 0
+              if (in_section) { print }
+              next
+            }
+            in_section { print }
+          ' CHANGELOG.md > release_notes.md
+          if [ ! -s release_notes.md ]; then
+            awk '/^## \[/{if(++c==2) exit} c==1{print}' CHANGELOG.md > release_notes.md
+          fi
           echo "release_notes<<EOF" >> $GITHUB_OUTPUT
           cat release_notes.md >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT

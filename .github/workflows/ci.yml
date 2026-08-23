@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [ main, develop ]
   push:
-    branches: [ main ]
+    branches: [ main, develop ]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -36,9 +36,11 @@ jobs:
         uv run ruff check .
         uv run ruff format --check .
 
-    - name: Run tests
+    - name: Run tests (incl. slow hook e2e)
+      # -o addopts="" clears the default `-m 'not slow'` filter so the
+      # pre-commit data-loss regression tests run in CI too.
       run: |
-        uv run pytest -v --cov=src/pezin --cov-report=xml --cov-report=term
+        uv run pytest -v -o addopts="" --cov=src/pezin --cov-report=xml --cov-report=term
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v4
