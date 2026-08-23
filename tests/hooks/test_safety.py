@@ -226,3 +226,46 @@ class TestAtomicWorktreeGuard:
         with atomic_worktree_guard(git_repo, ["package.json"]):
             pass
         assert (git_repo / "package.json").read_text() == original
+
+
+class TestCollectWriteTargets:
+    """Unit tests for the target-collection used by the parked-patch guard."""
+
+    def test_no_config_falls_back_to_found_config_file(self, git_repo):
+        from pezin.hooks.post_commit import _collect_write_targets
+
+        # Plain JS project: no pezin config, package.json found by fallback.
+        # (Paths are normalized to repo-relative later, inside the guard.)
+        targets = _collect_write_targets({}, git_repo, git_repo / "package.json")
+        assert targets == {
+            str(git_repo / "package.json"),
+            str(git_repo / "CHANGELOG.md"),
+        }
+
+    def test_no_config_and_no_config_file_yields_changelog_only(self, git_repo):
+        from pezin.hooks.post_commit import _collect_write_targets
+
+        targets = _collect_write_targets({}, git_repo)
+        assert targets == {str(git_repo / "CHANGELOG.md")}
+
+    def test_explicit_config_lists_version_files_and_changelog(self, git_repo):
+        from pezin.hooks.post_commit import _collect_write_targets
+
+        pezin_config = {
+            "version_files": [{"path": str(git_repo / "package.json")}],
+        }
+        targets = _collect_write_targets(pezin_config, git_repo)
+        assert targets == {
+            str(git_repo / "package.json"),
+            str(git_repo / "CHANGELOG.md"),
+        }
+
+    def test_disabled_changelog_excluded(self, git_repo):
+        from pezin.hooks.post_commit import _collect_write_targets
+
+        pezin_config = {
+            "version_files": [{"path": str(git_repo / "package.json")}],
+            "changelog": {"enabled": False},
+        }
+        targets = _collect_write_targets(pezin_config, git_repo)
+        assert targets == {str(git_repo / "package.json")}

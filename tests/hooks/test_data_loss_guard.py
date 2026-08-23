@@ -53,6 +53,54 @@ def _version(repo: Path, ref: str = "") -> str:
     return json.loads(out)["version"]
 
 
+def _seed_bare_json_repo(repo: Path, version: str = "0.1.0") -> None:
+    """Seed a repo with NO pezin config - package.json is found by fallback.
+
+    This is the exact viniline layout: no pyproject.toml/pezin.toml, so the
+    post-commit hook bumps package.json via find_config_file's last resort.
+    """
+    (repo / "package.json").write_text(
+        json.dumps({"name": "demo", "version": version, "deps": {}}, indent=2) + "\n"
+    )
+    (repo / "notes.txt").write_text("seed\n")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-m", "chore: init", "--no-verify")
+
+
+def test_unstaged_version_file_never_loses_work_no_config(
+    tmp_git_repo: Path, install_pezin_hooks
+):
+    """The viniline incident shape: no pezin config, package.json by fallback.
+
+    Regression test for the v0.8.1 blind spot: target collection used to
+    assume the default pyproject.toml when no pezin config existed, so a
+    parked package.json edit was not detected and the bump wiped it.
+    """
+    repo = tmp_git_repo
+    _seed_bare_json_repo(repo, version="0.62.5")
+    install_pezin_hooks(repo)
+
+    (repo / "feature.py").write_text("print('thing')\n")
+    _git(repo, "add", "feature.py")
+
+    package = json.loads((repo / "package.json").read_text())
+    package["deps"]["user-unstaged-key"] = "yes"
+    (repo / "package.json").write_text(json.dumps(package, indent=2) + "\n")
+    (repo / "notes.txt").write_text("IMPORTANT UNSTAGED WORK\n")
+    unstaged_package = (repo / "package.json").read_text()
+
+    commit = _git(repo, "commit", "-m", "feat: add thing", check=False)
+
+    assert commit.returncode == 0, (
+        f"commit failed: stdout={commit.stdout!r} stderr={commit.stderr!r}"
+    )
+    assert (repo / "package.json").read_text() == unstaged_package
+    assert (repo / "notes.txt").read_text() == "IMPORTANT UNSTAGED WORK\n"
+    assert _version(repo) == "0.62.5"
+    assert _version(repo, "HEAD") == "0.62.5"
+    assert _git(repo, "tag").stdout.strip() == ""
+
+
 def test_unstaged_version_file_never_loses_work(
     tmp_git_repo: Path, install_pezin_hooks
 ):

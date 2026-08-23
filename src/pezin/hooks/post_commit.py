@@ -205,14 +205,18 @@ def _service_root(service: ServiceConfig, repo_root: Path) -> Path:
     return repo_root
 
 
-def _collect_write_targets(pezin_config: dict, repo_root: Path) -> set:
+def _collect_write_targets(
+    pezin_config: dict, repo_root: Path, config_file: Optional[Path] = None
+) -> set:
     """Compute the repo-relative paths pezin may rewrite during this commit.
 
     Used for two safety checks: detecting parked pre-commit patches that
     overlap these files (skip the bump) and snapshotting them for the atomic
     rollback guard.  Mirrors the write surface of ``update_single_version``
     and ``update_monorepo_versions``: version files plus, when enabled, the
-    changelog path(s).
+    changelog path(s).  When the repo has no pezin config (e.g. a plain
+    package.json project), the version file is ``config_file`` itself - the
+    same fallback ``update_single_version`` uses.
     """
     targets: set = set()
 
@@ -229,9 +233,17 @@ def _collect_write_targets(pezin_config: dict, repo_root: Path) -> set:
                     changelog_path = (base_dir / changelog_path).resolve()
                 targets.add(str(changelog_path))
     else:
-        version_manager = VersionManager.from_config(pezin_config)
-        for config_file in version_manager.config_files:
-            targets.add(str(Path(config_file.path)))
+        if pezin_config:
+            version_manager = VersionManager.from_config(pezin_config)
+            version_paths = [cf.path for cf in version_manager.config_files]
+        elif config_file is not None:
+            # No pezin config: update_single_version bumps the found config
+            # file itself (e.g. package.json in a plain JS project).
+            version_paths = [str(config_file)]
+        else:
+            version_paths = []
+        for path in version_paths:
+            targets.add(str(Path(path)))
         changelog_config = read_changelog_config(pezin_config)
         if changelog_config.enabled:
             changelog_path = Path(changelog_config.path)
@@ -437,7 +449,7 @@ def update_single_version(
         logger.info(f"Bumping to: {new_version}")
 
         if write_targets is None:
-            write_targets = _collect_write_targets(pezin_config, repo_root)
+            write_targets = _collect_write_targets(pezin_config, repo_root, config_file)
         with atomic_worktree_guard(repo_root, write_targets):
             # Update all configured files
             updated_files = version_manager.write_versions(new_version)
@@ -534,7 +546,7 @@ def update_version_and_amend(
         # Never rewrite files whose unstaged changes pre-commit has parked:
         # a bump here makes the parked-patch restore fail and the user's
         # unstaged work is dropped from the worktree.
-        write_targets = _collect_write_targets(pezin_config, repo_root)
+        write_targets = _collect_write_targets(pezin_config, repo_root, config_file)
         conflicts = find_parked_patch_conflicts(
             repo_root, write_targets, since=take_hook_start(repo_root)
         )

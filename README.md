@@ -43,7 +43,7 @@ Add to your `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/tatus9/pezin
-    rev: v0.8.1  # Use the latest version
+    rev: v0.8.2  # Use the latest version
     hooks:
       - id: pezin
 ```
@@ -129,10 +129,11 @@ git apply --exclude=<conflicting-file> --whitespace=nowarn <patch-file>
 ```
 
 > **Note for local-repo consumers** (`repo: <path>, rev: HEAD` or a branch):
-> pre-commit snapshots the hook source when environments are built. After
-> pulling this fix, run `pre-commit install-hooks` (or `pre-commit run -a`
-> once) so hooks actually run the fixed code - and prefer pinning `rev:` to
-> a released tag.
+> pre-commit keys hook environments on the `rev` *string*, so a moved HEAD
+> does **not** refresh them - `pre-commit install-hooks` alone keeps running
+> the old code. Pin the rev to a released tag (edit it manually or run
+> `pre-commit autoupdate`); the changed rev forces the environment rebuild.
+> Verify with `pre-commit run pezin-post --all-files -v` after upgrading.
 
 ## Conventional Commits
 

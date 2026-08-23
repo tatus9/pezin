@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-08-23
+
+### 🐛 Bug Fixes
+
+- The parked-patch guard now also covers repositories without a pezin
+  config file. Projects whose version lives in `package.json` found via
+  the config-file fallback (e.g. plain JavaScript apps) were still bumped
+  while pre-commit had unstaged changes to that file parked, reintroducing
+  the v0.8.1 data-loss path there. README upgrade guidance corrected:
+  pinning `rev:` to a tag (not `pre-commit install-hooks`) is what
+  refreshes a `rev: HEAD` hook environment.
+
 ## [0.8.1] - 2026-08-23
 
 ### 🐛 Bug Fixes
@@ -138,7 +150,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cleanup.
 - Update readme.
 
-[Unreleased]: https://github.com/tatus9/pezin/compare/v0.8.1...HEAD
+[Unreleased]: https://github.com/tatus9/pezin/compare/v0.8.2...HEAD
+[0.8.2]: https://github.com/tatus9/pezin/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/tatus9/pezin/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/tatus9/pezin/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/tatus9/pezin/compare/v0.6.0...v0.7.0
