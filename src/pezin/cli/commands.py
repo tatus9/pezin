@@ -455,14 +455,12 @@ def update_changelog(
 
         logger.debug(f"Using changelog file: {actual_file}")
 
-        # Create changelog file if it doesn't exist
-        if not dry_run:
-            actual_file.parent.mkdir(parents=True, exist_ok=True)
-            if not actual_file.exists():
-                actual_file.write_text("# Changelog\n\n## [Unreleased]\n")
-
         manager_config = ChangelogConfig(repo_url=get_git_repo_url())
         manager = ChangelogManager(manager_config)
+
+        # Create changelog file if it doesn't exist (shared with post-commit hook).
+        if not dry_run:
+            manager.create_if_missing(actual_file)
 
         if not dry_run:
             manager.update_changelog(actual_file, version, commits, datetime.now())

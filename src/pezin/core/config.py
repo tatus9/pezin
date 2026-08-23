@@ -5,9 +5,64 @@ and monorepo modes.
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from .version import VersionFileConfig
+
+
+@dataclass
+class ChangelogHookConfig:
+    """Configuration for the post-commit changelog write.
+
+    Attributes:
+        enabled: Skip the changelog write entirely when False.
+        path: Path to the changelog file (resolved relative to the repo or service root).
+        unreleased_label: Header label used for the in-progress section.
+    """
+
+    enabled: bool = True
+    path: str = "CHANGELOG.md"
+    unreleased_label: str = "Unreleased"
+
+    @classmethod
+    def from_dict(cls, data: Optional[Dict[str, Any]] = None) -> "ChangelogHookConfig":
+        """Build config from raw dict, filling missing keys with defaults."""
+        data = data or {}
+        defaults = cls()
+        return cls(
+            enabled=bool(data.get("enabled", defaults.enabled)),
+            path=str(data.get("path", defaults.path)),
+            unreleased_label=str(
+                data.get("unreleased_label", defaults.unreleased_label)
+            ),
+        )
+
+
+def read_changelog_config(
+    pezin_config: Optional[Dict[str, Any]],
+    service_name: Optional[str] = None,
+) -> ChangelogHookConfig:
+    """Resolve changelog hook config from a pezin config dictionary.
+
+    Service-level overrides under `[tool.pezin.services.<name>.changelog]`
+    win key-by-key over the top-level `[tool.pezin.changelog]` defaults.
+    Missing tables yield an all-defaults config.
+    """
+    pezin_config = pezin_config or {}
+    top_level = pezin_config.get("changelog") or {}
+
+    if service_name:
+        services = pezin_config.get("services") or []
+        service_entry: Dict[str, Any] = {}
+        for entry in services:
+            if isinstance(entry, dict) and entry.get("name") == service_name:
+                service_entry = entry
+                break
+        service_changelog = service_entry.get("changelog") or {}
+        merged = {**top_level, **service_changelog}
+        return ChangelogHookConfig.from_dict(merged)
+
+    return ChangelogHookConfig.from_dict(top_level)
 
 
 @dataclass

@@ -1,9 +1,11 @@
 """Tests for monorepo configuration module."""
 
 from pezin.core.config import (
+    ChangelogHookConfig,
     MonorepoConfig,
     ServiceConfig,
     is_monorepo_mode,
+    read_changelog_config,
 )
 from pezin.core.version import VersionFileConfig
 
@@ -215,3 +217,58 @@ class TestIsMonorepoMode:
         """Test handling other mode values."""
         config = {"mode": "other"}
         assert is_monorepo_mode(config) is False
+
+
+class TestChangelogHookConfig:
+    """Tests for ChangelogHookConfig dataclass and resolver."""
+
+    def test_missing_table_returns_defaults(self):
+        cfg = read_changelog_config({})
+        assert cfg == ChangelogHookConfig()
+        assert cfg.enabled is True
+        assert cfg.path == "CHANGELOG.md"
+        assert cfg.unreleased_label == "Unreleased"
+
+    def test_none_config_returns_defaults(self):
+        cfg = read_changelog_config(None)
+        assert cfg == ChangelogHookConfig()
+
+    def test_partial_table_fills_defaults(self):
+        cfg = read_changelog_config({"changelog": {"path": "docs/HISTORY.md"}})
+        assert cfg.path == "docs/HISTORY.md"
+        assert cfg.enabled is True
+        assert cfg.unreleased_label == "Unreleased"
+
+    def test_enabled_false_disables(self):
+        cfg = read_changelog_config({"changelog": {"enabled": False}})
+        assert cfg.enabled is False
+        assert cfg.path == "CHANGELOG.md"
+
+    def test_service_override_beats_top_level(self):
+        pezin_config = {
+            "changelog": {"path": "TOP.md", "enabled": True},
+            "services": [
+                {"name": "api", "changelog": {"path": "api/CHANGELOG.md"}},
+                {"name": "web", "changelog": {"enabled": False}},
+            ],
+        }
+
+        api_cfg = read_changelog_config(pezin_config, service_name="api")
+        assert api_cfg.path == "api/CHANGELOG.md"
+        assert api_cfg.enabled is True  # inherited from top-level
+
+        web_cfg = read_changelog_config(pezin_config, service_name="web")
+        assert web_cfg.enabled is False
+        assert web_cfg.path == "TOP.md"  # inherited from top-level
+
+        unknown_cfg = read_changelog_config(pezin_config, service_name="missing")
+        assert unknown_cfg.path == "TOP.md"  # falls back to top-level
+        assert unknown_cfg.enabled is True
+
+    def test_service_without_changelog_uses_top_level(self):
+        pezin_config = {
+            "changelog": {"path": "TOP.md"},
+            "services": [{"name": "api"}],
+        }
+        cfg = read_changelog_config(pezin_config, service_name="api")
+        assert cfg.path == "TOP.md"

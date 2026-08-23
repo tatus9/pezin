@@ -43,7 +43,7 @@ Add to your `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/tatus9/pezin
-    rev: v0.1.2  # Use the latest version
+    rev: v0.8.0  # Use the latest version
     hooks:
       - id: pezin
 ```
@@ -66,6 +66,39 @@ git commit -m "feat!: redesign API"              # 1.1.1 → 2.0.0
 ```
 
 Your version files will be automatically updated!
+
+## Changelog Automation
+
+Since **v0.8.0** the post-commit hook also writes `CHANGELOG.md` on every
+bump. It promotes the `[Unreleased]` section into a dated `[<version>]`
+section and lists the originating commit under the matching category
+(Features, Bug Fixes, …). No config required — it's on by default.
+
+Opt out or customise via `[tool.pezin.changelog]`:
+
+```toml
+[tool.pezin.changelog]
+enabled = true                  # set false to skip the write
+path = "CHANGELOG.md"           # relative to the repo or service root
+unreleased_label = "Unreleased"
+header_style = "keepachangelog"
+```
+
+If `CHANGELOG.md` does not exist, pezin creates it with a
+Keep-a-Changelog header before writing the new section. A failure while
+writing the changelog is logged as a warning and the version bump still
+lands — the changelog is best-effort, never blocking.
+
+In monorepo mode each service can override the same keys under
+`[tool.pezin.services.<name>.changelog]`; per-service entries are
+resolved relative to that service's root.
+
+### Upgrading from < 0.8.0
+
+Projects upgrading from versions before 0.8.0 will see `CHANGELOG.md`
+edited automatically on the first conventional commit after upgrade.
+If you maintain the changelog by hand, set `enabled = false` to keep
+the previous behaviour.
 
 ## Conventional Commits
 

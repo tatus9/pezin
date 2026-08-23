@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pezin"
-version = "0.7.0"
+version = "0.8.0"
 description = "Automated version bumping and changelog management using conventional commits"
 authors = [
     { name = "Tatus9", email = "rafael@rro.one" },
@@ -52,4 +52,7 @@ testpaths = [
     "tests",
 ]
 python_files = "test_*.py"
-addopts = "-v"
+addopts = "-v -m 'not slow'"
+markers = [
+    "slow: end-to-end hook regression tests that spawn real subprocesses (git, pre-commit); opt-in via `pytest -m slow`",
+]

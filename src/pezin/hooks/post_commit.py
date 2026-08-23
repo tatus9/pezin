@@ -10,9 +10,15 @@ from typing import List, Optional
 
 import typer
 
-from ..cli.commands import read_config
+from ..cli.commands import get_git_repo_url, read_config
+from ..core.changelog import ChangelogConfig, ChangelogManager
 from ..core.commit import BumpType, ConventionalCommit
-from ..core.config import is_monorepo_mode
+from ..core.config import (
+    ChangelogHookConfig,
+    ServiceConfig,
+    is_monorepo_mode,
+    read_changelog_config,
+)
 from ..core.version import (
     ServiceVersionManager,
     VersionBumpType,
@@ -186,6 +192,56 @@ class VersionUpdateResult:
     is_monorepo: bool = False
 
 
+def _service_root(service: ServiceConfig, repo_root: Path) -> Path:
+    """Best-effort service root: directory of the first version file, else repo root."""
+    if service.version_files:
+        first = Path(service.version_files[0].path)
+        return (
+            first.parent
+            if first.is_absolute()
+            else (repo_root / first).resolve().parent
+        )
+    return repo_root
+
+
+def write_changelog_entry(
+    commit: ConventionalCommit,
+    new_version: str,
+    base_dir: Path,
+    changelog_config: ChangelogHookConfig,
+) -> Optional[Path]:
+    """Write the new version's CHANGELOG section, return the path on success.
+
+    Returns None when the write is skipped (`enabled = False`) or on failure.
+    Failures are logged via `echo_to_terminal` and never re-raised so the
+    caller can continue with the version amend regardless.
+    """
+    if not changelog_config.enabled:
+        return None
+
+    try:
+        changelog_path = Path(changelog_config.path)
+        if not changelog_path.is_absolute():
+            changelog_path = (base_dir / changelog_path).resolve()
+
+        manager = ChangelogManager(
+            ChangelogConfig(
+                unreleased_label=changelog_config.unreleased_label,
+                repo_url=get_git_repo_url(),
+            )
+        )
+        manager.create_if_missing(changelog_path)
+        manager.update_changelog(changelog_path, new_version, [commit])
+        logger.info(f"Updated changelog: {changelog_path}")
+        return changelog_path
+
+    except Exception as e:
+        # Non-fatal: log + warn user; the version bump must still land.
+        logger.warning(f"CHANGELOG write failed: {e}", exc_info=True)
+        echo_to_terminal(f"[pezin] Warning: CHANGELOG write failed: {e}")
+        return None
+
+
 def update_monorepo_versions(
     commit: ConventionalCommit,
     version_bump_type: VersionBumpType,
@@ -245,6 +301,19 @@ def update_monorepo_versions(
                 f"Service {result.service_name}: "
                 f"{result.old_version} -> {result.new_version}"
             )
+
+        # Write per-service changelog entries before staging.
+        for result in results:
+            service = next((s for s in services if s.name == result.service_name), None)
+            if service is None:
+                continue
+            cl_config = service_manager.get_changelog_config(service.name)
+            base_dir = _service_root(service, repo_root)
+            written = write_changelog_entry(
+                commit, str(result.new_version), base_dir, cl_config
+            )
+            if written is not None:
+                all_updated_files.append(str(written))
 
         # Stage all updated files
         for file_path in all_updated_files:
@@ -319,6 +388,12 @@ def update_single_version(
         # Update all configured files
         updated_files = version_manager.write_versions(new_version)
         logger.info(f"Updated files: {updated_files}")
+
+        # Write the changelog entry before staging so it lands in the same amend.
+        cl_config = read_changelog_config(pezin_config)
+        written = write_changelog_entry(commit, str(new_version), repo_root, cl_config)
+        if written is not None:
+            updated_files.append(str(written))
 
         # Add all updated files to staging
         for file_path in updated_files:

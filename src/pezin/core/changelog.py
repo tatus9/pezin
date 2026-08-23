@@ -24,7 +24,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
 
+from ..logging import get_logger
 from .commit import CommitType, ConventionalCommit
+
+logger = get_logger()
 
 # Default section headers for different commit types
 DEFAULT_SECTIONS = {
@@ -94,6 +97,22 @@ class ChangelogManager:
             config: Configuration for changelog management
         """
         self.config = config or ChangelogConfig()
+
+    def create_if_missing(self, path: Path) -> bool:
+        """Create a Keep-a-Changelog-formatted file if `path` is absent.
+
+        Returns True if the file was created, False if it already existed.
+        Parent directories are created as needed. Used by both the CLI and
+        the post-commit hook so the "first-run on a virgin repo" path is
+        shared.
+        """
+        if path.exists():
+            return False
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            f"{self.config.header_template}\n\n## [{self.config.unreleased_label}]\n"
+        )
+        return True
 
     def parse_changelog(self, content: str) -> Dict[str, List[str]]:
         """Parse changelog content into version sections.
@@ -248,6 +267,13 @@ class ChangelogManager:
         # Parse existing content
         content = path.read_text()
         sections = self.parse_changelog(content)
+
+        # Idempotency guard: if a section for this version already exists,
+        # do not append a duplicate. The caller may re-trigger us on the
+        # same commit (manual re-amend, partial-failure retries, etc.).
+        if version in sections:
+            logger.debug(f"CHANGELOG.md already has a [{version}] section; skipping")
+            return
 
         # Group commits by type
         changes = self.group_commits(commits)

@@ -180,6 +180,26 @@ def test_update_changelog_multiple_versions(temp_changelog, sample_commits):
     assert "another feature" in content
 
 
+def test_update_changelog_idempotent_on_duplicate_version(
+    temp_changelog, sample_commits
+):
+    """Re-running update_changelog with the same version is a no-op for that section."""
+    manager = ChangelogManager(ChangelogConfig())
+
+    manager.update_changelog(temp_changelog, "1.2.3", sample_commits)
+    first_content = temp_changelog.read_text()
+    assert first_content.count("## [1.2.3]") == 1
+
+    # Second run with the same version must not duplicate the section.
+    new_commits = [ConventionalCommit.parse("feat: ignored on rerun")]
+    manager.update_changelog(temp_changelog, "1.2.3", new_commits)
+    second_content = temp_changelog.read_text()
+
+    assert second_content == first_content
+    assert second_content.count("## [1.2.3]") == 1
+    assert "ignored on rerun" not in second_content
+
+
 def test_update_changelog_with_custom_config(temp_changelog, sample_commits):
     """Test changelog update with custom configuration."""
     config = ChangelogConfig(

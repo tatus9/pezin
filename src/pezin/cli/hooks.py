@@ -86,8 +86,9 @@ except ImportError:
 
 # Import and run the hook
 try:
+    import typer
     from {python_module} import main
-    main()
+    typer.run(main)
 except Exception as e:
     print(f"Error running {hook_name} hook: {{e}}", file=sys.stderr)
     import traceback

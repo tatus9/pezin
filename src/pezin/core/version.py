@@ -478,15 +478,33 @@ class ServiceVersionManager:
     services in a monorepo, where each service maintains its own version.
     """
 
-    def __init__(self, config: MonorepoConfig):
+    def __init__(
+        self,
+        config: MonorepoConfig,
+        raw_pezin_config: Optional[Dict] = None,
+    ):
         """Initialize with monorepo configuration.
 
         Args:
             config: MonorepoConfig with service definitions
+            raw_pezin_config: Original pezin config dict, preserved so the
+                manager can resolve per-service overrides (e.g. changelog)
+                that aren't modelled on the typed dataclasses.
         """
         self.config = config
+        self._raw_pezin_config: Dict = raw_pezin_config or {}
         self._service_managers: Dict[str, VersionManager] = {}
         self._setup_managers()
+
+    def get_changelog_config(self, service_name: str):
+        """Resolve changelog config for a service, applying overrides.
+
+        Lazy-imports `read_changelog_config` to avoid a circular import with
+        `pezin.core.config`.
+        """
+        from .config import read_changelog_config
+
+        return read_changelog_config(self._raw_pezin_config, service_name)
 
     def _setup_managers(self):
         """Create VersionManager for each service."""
@@ -596,4 +614,4 @@ class ServiceVersionManager:
         from .config import MonorepoConfig
 
         monorepo_config = MonorepoConfig.from_dict(config)
-        return cls(monorepo_config)
+        return cls(monorepo_config, raw_pezin_config=config)
