@@ -56,3 +56,9 @@ addopts = "-v -m 'not slow'"
 markers = [
     "slow: end-to-end hook regression tests that spawn real subprocesses (git, pre-commit); opt-in via `pytest -m slow`",
 ]
+
+[tool.pezin]
+version_files = [
+    { path = "pyproject.toml" },
+    { path = "src/pezin/__init__.py", version_pattern = '__version__\s*=\s*"([^"]+)"', version_replacement = '__version__ = "{version}"' },
+]

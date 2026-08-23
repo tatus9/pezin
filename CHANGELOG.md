@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### 🧰 Maintenance
+
+- pezin's own releases now keep `src/pezin/__init__.py.__version__` in sync
+  with `pyproject.toml` via `version_files` (it had drifted to 0.8.0 while
+  the package was at 0.8.2).
+
 ## [0.8.2] - 2026-08-23
 
 ### 🐛 Bug Fixes

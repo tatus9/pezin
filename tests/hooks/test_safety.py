@@ -269,3 +269,29 @@ class TestCollectWriteTargets:
         }
         targets = _collect_write_targets(pezin_config, git_repo)
         assert targets == {str(git_repo / "package.json")}
+
+
+class TestSelfRepoVersionFilePattern:
+    """Pin the regex pair pezin itself uses for src/pezin/__init__.py."""
+
+    def test_init_py_pattern_reads_and_writes(self, tmp_path):
+        from pezin.core.version import VersionManager, VersionFileConfig
+        from pezin.core.version import Version
+
+        init = tmp_path / "__init__.py"
+        init.write_text(
+            'from .core import thing\n\n__version__ = "0.8.2"\n\n__all__ = []\n'
+        )
+        vm = VersionManager(
+            [
+                VersionFileConfig(
+                    path=str(init),
+                    version_pattern=r'__version__\s*=\s*"([^"]+)"',
+                    version_replacement=r'__version__ = "{version}"',
+                )
+            ]
+        )
+        parsed = vm.get_primary_version()
+        assert parsed is not None and str(parsed) == "0.8.2"
+        vm.write_versions(Version("0.9.0"))
+        assert '__version__ = "0.9.0"' in init.read_text()
