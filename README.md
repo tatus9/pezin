@@ -45,15 +45,20 @@ repos:
   - repo: https://github.com/tatus9/pezin
     rev: v0.8.2  # Use the latest version
     hooks:
-      - id: pezin
+      - id: pezin-prepare
+      - id: pezin-post
 ```
 
 Install the hooks:
 
 ```bash
 pip install pre-commit pezin
-pre-commit install --hook-type commit-msg
+pre-commit install --hook-type prepare-commit-msg --hook-type post-commit
 ```
+
+Both hooks are required: `pezin-prepare` detects amends/rebases and
+cooperates with the data-loss guard; `pezin-post` performs the bump,
+changelog write and tagging.
 
 ### Start Using
 
@@ -70,9 +75,11 @@ Your version files will be automatically updated!
 ## Changelog Automation
 
 Since **v0.8.0** the post-commit hook also writes `CHANGELOG.md` on every
-bump. It promotes the `[Unreleased]` section into a dated `[<version>]`
-section and lists the originating commit under the matching category
-(Features, Bug Fixes, …). No config required — it's on by default.
+bump. It adds a new dated `[<version>]` section listing the triggering
+commit under the matching category (Features, Bug Fixes, …) and creates
+the file with a Keep-a-Changelog header if missing. Pre-existing
+`[Unreleased]` entries are left where they are. No config required — it's
+on by default.
 
 Opt out or customise via `[tool.pezin.changelog]`:
 
@@ -81,7 +88,6 @@ Opt out or customise via `[tool.pezin.changelog]`:
 enabled = true                  # set false to skip the write
 path = "CHANGELOG.md"           # relative to the repo or service root
 unreleased_label = "Unreleased"
-header_style = "keepachangelog"
 ```
 
 If `CHANGELOG.md` does not exist, pezin creates it with a
@@ -89,9 +95,17 @@ Keep-a-Changelog header before writing the new section. A failure while
 writing the changelog is logged as a warning and the version bump still
 lands — the changelog is best-effort, never blocking.
 
-In monorepo mode each service can override the same keys under
-`[tool.pezin.services.<name>.changelog]`; per-service entries are
-resolved relative to that service's root.
+In monorepo mode each service can override the same keys in that
+service's `[[tool.pezin.services]]` entry; per-service entries are
+resolved relative to that service's root:
+
+```toml
+[[tool.pezin.services]]
+name = "api"
+version_files = [{ path = "api/package.json", file_type = "json" }]
+[tool.pezin.services.changelog]
+path = "api/CHANGELOG.md"
+```
 
 ### Upgrading from < 0.8.0
 
@@ -119,6 +133,12 @@ Since **v0.8.1** pezin guards against this:
 
 Unstaged changes to *other* files never block the bump; the parked patch
 restores cleanly around it.
+
+> The guard relies on `pezin-prepare` (installed above) marking the start
+> of each commit. Without it — e.g. only `pezin-post` installed — the
+> guard falls back to a 60-second recency window, and a parked patch older
+> than that (slow hook environments being built, slow sibling hooks) can
+> slip past it. Install both hooks.
 
 If you were hit by this bug before v0.8.1, your "lost" work is still in the
 patch file pre-commit logged (`~/.cache/pre-commit/pre-commit.log` names

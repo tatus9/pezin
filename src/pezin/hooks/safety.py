@@ -29,20 +29,19 @@ from ..logging import get_logger
 
 logger = get_logger()
 
-# Patch files older than this are considered stale and ignored.  pre-commit
-# never deletes its patch files (not even after a successful restore), so
-# recency is required to tell the patch parked for *this* commit apart from
-# leftovers of earlier commits.  A false positive merely skips one bump.
-PARKED_PATCH_MAX_AGE_SECONDS = 600
-
 # Marker file (inside .git/, so it never dirties the worktree) written by the
 # prepare-commit-msg hook. Parked patches older than it belong to earlier
 # commits or *other repositories* sharing the pre-commit cache and must not
-# suppress this commit's bump.
+# suppress this commit's bump.  pre-commit never deletes its patch files
+# (not even after a successful restore), so the marker is what tells this
+# commit's patch apart from the leftovers.  A false positive merely skips
+# one bump; a missed one can lose unstaged work, hence the marker.
 SINCE_FILE_NAME = "pezin_parked_patch_since"
 
-# Lower bound used when the marker is missing (e.g. post-commit invoked
-# without pezin's prepare hook having run).
+# Lower bound used when the marker is missing (e.g. only pezin-post
+# installed, no pezin-prepare).  Keep short: without the marker, recency
+# alone must not mistake another repo's leftover patch for this commit's
+# (see README "Unstaged Changes and the pre-commit Data-Loss Guard").
 _FALLBACK_SINCE_SECONDS = 60.0
 
 _PATCH_NAME_RE = re.compile(r"^patch\d+-\d+$")
@@ -182,7 +181,6 @@ def _patch_is_live(patch_path: Path, repo_root: Path) -> bool:
 def find_parked_patch_conflicts(
     repo_root: Path,
     target_files: Iterable[str],
-    max_age_seconds: float = PARKED_PATCH_MAX_AGE_SECONDS,
     since: Optional[float] = None,
 ) -> Dict[str, Set[Path]]:
     """Detect parked unstaged changes that overlap ``target_files``.
@@ -197,7 +195,9 @@ def find_parked_patch_conflicts(
     cache is shared by every repository on the machine and patch files are
     never deleted, so recency alone cannot tell this commit's parked patch
     apart from another repo's leftovers.  Without a stamp a short fallback
-    window is used.
+    window (:data:`_FALLBACK_SINCE_SECONDS`) is used - a parked patch older
+    than that is not detected, which is why installing pezin-prepare
+    alongside pezin-post is required.
     """
     if os.environ.get("PRE_COMMIT") != "1":
         return {}

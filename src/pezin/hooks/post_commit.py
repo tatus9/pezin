@@ -191,6 +191,7 @@ class VersionUpdateResult:
     versions: List[str]
     tags: List[str]
     is_monorepo: bool = False
+    skipped_reason: Optional[str] = None
 
 
 def _service_root(service: ServiceConfig, repo_root: Path) -> Path:
@@ -568,7 +569,11 @@ def update_version_and_amend(
                 "[pezin] Stash or commit those changes first, then commit "
                 "again or run `pezin bump`."
             )
-            return None
+            return VersionUpdateResult(
+                versions=[],
+                tags=[],
+                skipped_reason="parked-patch overlap",
+            )
 
         # Check if monorepo mode
         if is_monorepo_mode(pezin_config):
@@ -721,6 +726,11 @@ def core_flow(config_file, create_tag):
         logger.debug(f"Processing commit message: '{message}'")
 
         if result := update_version_and_amend(message, repo_root, config_file):
+            if result.skipped_reason:
+                # Skip reasons were already echoed by the guard; do not
+                # follow them with the generic "doesn't trigger bumps"
+                # message, which would be wrong (a feat: *does* bump).
+                logger.debug(f"Bump skipped: {result.skipped_reason}")
             # Handle version bump result
             for version in result.versions:
                 logger.info(f"Version bumped to {version}")

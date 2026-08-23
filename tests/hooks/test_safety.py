@@ -295,3 +295,160 @@ class TestSelfRepoVersionFilePattern:
         assert parsed is not None and str(parsed) == "0.8.2"
         vm.write_versions(Version("0.9.0"))
         assert '__version__ = "0.9.0"' in init.read_text()
+
+
+class TestMonorepoWriteTargets:
+    """The monorepo branch of _collect_write_targets (reviewer gap)."""
+
+    def test_monorepo_targets_include_service_files_and_changelogs(self, git_repo):
+        from pezin.hooks.post_commit import _collect_write_targets
+
+        (git_repo / "api").mkdir()
+        (git_repo / "api" / "package.json").write_text('{"version": "0.1.0"}\n')
+        (git_repo / "web").mkdir()
+        (git_repo / "web" / "pyproject.toml").write_text(
+            '[project]\nversion = "0.2.0"\n'
+        )
+        _git(git_repo, "add", "-A")
+        _git(git_repo, "commit", "-m", "add services")
+
+        pezin_config = {
+            "mode": "monorepo",
+            "services": [
+                {
+                    "name": "api",
+                    "version_files": [{"path": str(git_repo / "api" / "package.json")}],
+                    "changelog": {"path": "HISTORY.md"},
+                },
+                {
+                    "name": "web",
+                    "version_files": [
+                        {"path": str(git_repo / "web" / "pyproject.toml")}
+                    ],
+                    "changelog": {"enabled": False},
+                },
+            ],
+        }
+        targets = _collect_write_targets(pezin_config, git_repo)
+        # api: version file + service-root changelog; web: version file only
+        assert targets == {
+            str(git_repo / "api" / "package.json"),
+            str(git_repo / "api" / "HISTORY.md"),
+            str(git_repo / "web" / "pyproject.toml"),
+        }
+
+
+class TestWriteChangelogEntry:
+    """write_changelog_entry contract (reviewer gap)."""
+
+    def _commit(self):
+        from pezin.core.commit import ConventionalCommit
+
+        return ConventionalCommit.parse("feat: add thing")
+
+    def test_disabled_returns_none_without_touching_disk(self, tmp_path):
+        from pezin.core.config import ChangelogHookConfig
+        from pezin.hooks.post_commit import write_changelog_entry
+
+        result = write_changelog_entry(
+            self._commit(),
+            "1.2.3",
+            tmp_path,
+            ChangelogHookConfig(enabled=False),
+        )
+        assert result is None
+        assert not (tmp_path / "CHANGELOG.md").exists()
+
+    def test_failure_is_nonfatal_and_returns_none(self, tmp_path, monkeypatch):
+        from pezin.core.config import ChangelogHookConfig
+        from pezin.hooks import post_commit
+
+        def boom(*args, **kwargs):
+            raise RuntimeError("disk on fire")
+
+        monkeypatch.setattr(post_commit, "ChangelogManager", boom)
+        result = post_commit.write_changelog_entry(
+            self._commit(),
+            "1.2.3",
+            tmp_path,
+            ChangelogHookConfig(),
+        )
+        assert result is None  # logged + warned, never raised
+
+
+class TestFallbackWindowExpiry:
+    """Without the prepare stamp, patches older than the 60s window are
+    ignored (documented limitation; pins the fallback semantics)."""
+
+    def test_patch_older_than_fallback_window_is_ignored(
+        self, git_repo, tmp_path, monkeypatch
+    ):
+        from pezin.hooks.safety import _FALLBACK_SINCE_SECONDS
+
+        pc_home = tmp_path / "pc-home"
+        pc_home.mkdir()
+        monkeypatch.setenv("PRE_COMMIT", "1")
+        monkeypatch.setenv("PRE_COMMIT_HOME", str(pc_home))
+        _write_patch(pc_home / "patch100-8", _simple_patch(git_repo, "x"))
+        old = time.time() - (_FALLBACK_SINCE_SECONDS + 60)
+        import os
+
+        os.utime(pc_home / "patch100-8", (old, old))
+
+        assert find_parked_patch_conflicts(git_repo, {"other.txt"}) == {}
+
+
+class TestSkipResult:
+    """update_version_and_amend returns a distinguishable skip result."""
+
+    def _parked_patch_for(self, git_repo, pc_home, name):
+        """Create a live parked patch touching pyproject.toml."""
+        pyproject = git_repo / "pyproject.toml"
+        original = pyproject.read_text()
+        pyproject.write_text(original + "# parked edit\n")
+        diff = subprocess.run(
+            ["git", "diff"],
+            cwd=git_repo,
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+        pyproject.write_text(original)  # parked = not in worktree
+        patch = pc_home / name
+        patch.write_text(diff)
+        return patch
+
+    def test_overlap_returns_skipped_reason(self, git_repo, tmp_path, monkeypatch):
+        from pezin.hooks.post_commit import update_version_and_amend
+
+        pyproject = git_repo / "pyproject.toml"
+        pyproject.write_text('[project]\nname = "demo"\nversion = "0.1.0"\n')
+        _git(git_repo, "add", "pyproject.toml")
+        _git(git_repo, "commit", "-m", "add pyproject")
+
+        pc_home = tmp_path / "pc-home"
+        pc_home.mkdir()
+        monkeypatch.setenv("PRE_COMMIT", "1")
+        monkeypatch.setenv("PRE_COMMIT_HOME", str(pc_home))
+        self._parked_patch_for(git_repo, pc_home, "patch100-9")
+
+        result = update_version_and_amend("feat: add thing", git_repo, pyproject)
+        assert result is not None
+        assert result.skipped_reason == "parked-patch overlap"
+        assert result.versions == [] and result.tags == []
+        # nothing was bumped
+        assert '"0.1.0"' in pyproject.read_text()
+
+    def test_clean_repo_still_bumps_via_direct_call(self, git_repo, monkeypatch):
+        """No parked patch (no PRE_COMMIT env) -> bump proceeds."""
+        from pezin.hooks.post_commit import update_version_and_amend
+
+        pyproject = git_repo / "pyproject.toml"
+        pyproject.write_text('[project]\nname = "demo"\nversion = "0.1.0"\n')
+        _git(git_repo, "add", "pyproject.toml")
+        _git(git_repo, "commit", "-m", "add pyproject")
+        monkeypatch.delenv("PRE_COMMIT", raising=False)
+
+        result = update_version_and_amend("feat: add thing", git_repo, pyproject)
+        assert result is not None and result.skipped_reason is None
+        assert result.versions == ["0.2.0"]

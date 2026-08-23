@@ -12,6 +12,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - pezin's own releases now keep `src/pezin/__init__.py.__version__` in sync
   with `pyproject.toml` via `version_files` (it had drifted to 0.8.0 while
   the package was at 0.8.2).
+- README setup instructions corrected to the real hook ids
+  (`pezin-prepare`/`pezin-post`, both required) and the supported
+  `[tool.pezin.changelog]` keys (removed the never-implemented
+  `header_style`); monorepo example rewritten as valid array-of-tables
+  TOML. Changelog-behaviour wording fixed (nothing is "promoted" out of
+  `[Unreleased]`).
+- Post-commit hook no longer prints the misleading "'feat' commits don't
+  trigger version bumps" line right after a parked-patch skip; the skip
+  now returns a distinguishable result (`skipped_reason`).
 
 ## [0.8.2] - 2026-08-23
 
@@ -44,8 +53,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### ✨ Features
 
 - Automatic `CHANGELOG.md` updates on commit. The post-commit hook now
-  promotes the `[Unreleased]` section into a dated `[<version>]` section
-  and lists the originating commit under the matching category, then
+  adds a dated `[<version>]` section listing the triggering commit under
+  the matching category (creating the file with a Keep-a-Changelog header
+  if missing; pre-existing `[Unreleased]` entries are left in place), then
   amends the change into the originating commit alongside the version
   files. Configurable via `[tool.pezin.changelog]` (opt-out with
   `enabled = false`); per-service overrides are honoured in monorepo
