@@ -43,7 +43,7 @@ Add to your `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/tatus9/pezin
-    rev: v0.8.0  # Use the latest version
+    rev: v0.8.1  # Use the latest version
     hooks:
       - id: pezin
 ```
@@ -99,6 +99,40 @@ Projects upgrading from versions before 0.8.0 will see `CHANGELOG.md`
 edited automatically on the first conventional commit after upgrade.
 If you maintain the changelog by hand, set `enabled = false` to keep
 the previous behaviour.
+
+## Unstaged Changes and the pre-commit Data-Loss Guard
+
+Under the `pre-commit` framework, any unstaged changes are "parked" in a
+patch file while hooks run, then re-applied afterwards. If a hook rewrites
+one of those files, the re-apply can fail and the unstaged work disappears
+from the worktree (it survives only in `~/.cache/pre-commit/patch*`).
+
+Since **v0.8.1** pezin guards against this:
+
+- **Skips the bump** when pre-commit has parked unstaged changes to a file
+  pezin would rewrite (version files or `CHANGELOG.md`). The hook prints a
+  message explaining the skip; stash or commit those changes, then commit
+  again or run `pezin bump` to bump manually.
+- **Atomic rollback**: if pezin's own write/amend path fails halfway, the
+  worktree, index and `HEAD` are restored to their pre-hook state - no
+  half-applied bumps, no leftover files.
+
+Unstaged changes to *other* files never block the bump; the parked patch
+restores cleanly around it.
+
+If you were hit by this bug before v0.8.1, your "lost" work is still in the
+patch file pre-commit logged (`~/.cache/pre-commit/pre-commit.log` names
+it). Recover with:
+
+```bash
+git apply --exclude=<conflicting-file> --whitespace=nowarn <patch-file>
+```
+
+> **Note for local-repo consumers** (`repo: <path>, rev: HEAD` or a branch):
+> pre-commit snapshots the hook source when environments are built. After
+> pulling this fix, run `pre-commit install-hooks` (or `pre-commit run -a`
+> once) so hooks actually run the fixed code - and prefer pinning `rev:` to
+> a released tag.
 
 ## Conventional Commits
 

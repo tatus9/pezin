@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-08-23
+
+### 🐛 Bug Fixes
+
+- Commit hooks can no longer wipe a repo's unstaged changes. When the
+  pre-commit framework has parked unstaged edits to a file pezin would
+  rewrite (version files or `CHANGELOG.md`), the post-commit hook now
+  skips the bump and explains why, instead of rewriting the file and
+  breaking pre-commit's parked-patch restore (which discarded the user's
+  unstaged work from the worktree). Unstaged changes to other files keep
+  bumping as before. Additionally, a failure inside pezin's own
+  bump/amend path now restores the worktree, index and `HEAD` to their
+  pre-hook state.
+
 ## [0.8.0] - 2026-08-06
 
 ### ✨ Features
@@ -124,7 +138,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cleanup.
 - Update readme.
 
-[Unreleased]: https://github.com/tatus9/pezin/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/tatus9/pezin/compare/v0.8.1...HEAD
+[0.8.1]: https://github.com/tatus9/pezin/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/tatus9/pezin/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/tatus9/pezin/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/tatus9/pezin/compare/v0.5.0...v0.6.0

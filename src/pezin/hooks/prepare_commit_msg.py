@@ -11,6 +11,7 @@ import typer
 
 from ..core.commit import ConventionalCommit
 from ..logging import get_logger, setup_logging
+from .safety import record_hook_start
 
 # Set up centralized logging
 setup_logging()
@@ -195,6 +196,13 @@ def main(
 
 def commit_analysis(commit_msg_file, commit_source, commit_sha):
     logger.debug("Pezin prepare-commit-msg hook starting...")
+
+    # Stamp this hook's start time for the post-commit parked-patch guard.
+    # Must happen before any early-exit path below.
+    try:
+        record_hook_start(get_repo_root())
+    except Exception as e:
+        logger.debug(f"Could not record hook start: {e}")
 
     # Get from environment variables if not provided via CLI
     # Pre-commit framework passes git hook arguments as env vars, not CLI args

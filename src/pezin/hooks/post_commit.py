@@ -26,6 +26,7 @@ from ..core.version import (
     VersionManager,
 )
 from ..logging import get_logger, setup_logging
+from .safety import atomic_worktree_guard, find_parked_patch_conflicts, take_hook_start
 
 # Set up centralized logging
 setup_logging()
@@ -204,6 +205,43 @@ def _service_root(service: ServiceConfig, repo_root: Path) -> Path:
     return repo_root
 
 
+def _collect_write_targets(pezin_config: dict, repo_root: Path) -> set:
+    """Compute the repo-relative paths pezin may rewrite during this commit.
+
+    Used for two safety checks: detecting parked pre-commit patches that
+    overlap these files (skip the bump) and snapshotting them for the atomic
+    rollback guard.  Mirrors the write surface of ``update_single_version``
+    and ``update_monorepo_versions``: version files plus, when enabled, the
+    changelog path(s).
+    """
+    targets: set = set()
+
+    if is_monorepo_mode(pezin_config):
+        service_manager = ServiceVersionManager.from_config(pezin_config)
+        for service in service_manager.config.services:
+            for version_file in service.version_files:
+                targets.add(str(Path(version_file.path)))
+            changelog_config = service_manager.get_changelog_config(service.name)
+            if changelog_config.enabled:
+                changelog_path = Path(changelog_config.path)
+                if not changelog_path.is_absolute():
+                    base_dir = _service_root(service, repo_root)
+                    changelog_path = (base_dir / changelog_path).resolve()
+                targets.add(str(changelog_path))
+    else:
+        version_manager = VersionManager.from_config(pezin_config)
+        for config_file in version_manager.config_files:
+            targets.add(str(Path(config_file.path)))
+        changelog_config = read_changelog_config(pezin_config)
+        if changelog_config.enabled:
+            changelog_path = Path(changelog_config.path)
+            if not changelog_path.is_absolute():
+                changelog_path = (repo_root / changelog_path).resolve()
+            targets.add(str(changelog_path))
+
+    return targets
+
+
 def write_changelog_entry(
     commit: ConventionalCommit,
     new_version: str,
@@ -247,6 +285,7 @@ def update_monorepo_versions(
     version_bump_type: VersionBumpType,
     pezin_config: dict,
     repo_root: Path,
+    write_targets: Optional[set] = None,
 ) -> Optional[VersionUpdateResult]:
     """Update versions for monorepo services based on commit scope.
 
@@ -255,6 +294,8 @@ def update_monorepo_versions(
         version_bump_type: Type of version bump to perform
         pezin_config: Pezin configuration dictionary
         repo_root: Repository root path
+        write_targets: Repo-relative paths pezin may rewrite; snapshotted for
+            the atomic rollback guard (computed when omitted)
 
     Returns:
         VersionUpdateResult with updated versions and tags, or None if no update
@@ -285,63 +326,70 @@ def update_monorepo_versions(
             logger.info("No services matched for scope(s) - skipping version bump")
             return None
 
-        # Bump versions for matched services
+        # Bump versions for matched services, restoring everything on failure
         prerelease = commit.get_prerelease_label()
-        results = service_manager.bump_services(services, version_bump_type, prerelease)
-
-        if not results:
-            logger.warning("No versions were bumped")
-            return None
-
-        # Collect all updated files and stage them
-        all_updated_files = []
-        for result in results:
-            all_updated_files.extend(result.updated_files)
-            logger.info(
-                f"Service {result.service_name}: "
-                f"{result.old_version} -> {result.new_version}"
+        if write_targets is None:
+            write_targets = _collect_write_targets(pezin_config, repo_root)
+        with atomic_worktree_guard(repo_root, write_targets):
+            results = service_manager.bump_services(
+                services, version_bump_type, prerelease
             )
 
-        # Write per-service changelog entries before staging.
-        for result in results:
-            service = next((s for s in services if s.name == result.service_name), None)
-            if service is None:
-                continue
-            cl_config = service_manager.get_changelog_config(service.name)
-            base_dir = _service_root(service, repo_root)
-            written = write_changelog_entry(
-                commit, str(result.new_version), base_dir, cl_config
-            )
-            if written is not None:
-                all_updated_files.append(str(written))
+            if not results:
+                logger.warning("No versions were bumped")
+                return None
 
-        # Stage all updated files
-        for file_path in all_updated_files:
-            try:
-                subprocess.run(
-                    ["git", "add", file_path],
-                    capture_output=True,
-                    check=True,
-                    cwd=repo_root,
+            # Collect all updated files and stage them
+            all_updated_files = []
+            for result in results:
+                all_updated_files.extend(result.updated_files)
+                logger.info(
+                    f"Service {result.service_name}: "
+                    f"{result.old_version} -> {result.new_version}"
                 )
-                logger.info(f"Staged file for amendment: {file_path}")
-            except subprocess.CalledProcessError as e:
-                logger.warning(f"Failed to stage {file_path}: {e}")
 
-        # Amend the commit (skip hooks since original commit already passed them)
-        subprocess.run(
-            ["git", "commit", "--amend", "--no-edit", "--no-verify"],
-            capture_output=True,
-            check=True,
-            cwd=repo_root,
-        )
-        logger.info("Amended commit with version changes")
+            # Write per-service changelog entries before staging.
+            for result in results:
+                service = next(
+                    (s for s in services if s.name == result.service_name), None
+                )
+                if service is None:
+                    continue
+                cl_config = service_manager.get_changelog_config(service.name)
+                base_dir = _service_root(service, repo_root)
+                written = write_changelog_entry(
+                    commit, str(result.new_version), base_dir, cl_config
+                )
+                if written is not None:
+                    all_updated_files.append(str(written))
 
-        return VersionUpdateResult(
-            versions=[str(r.new_version) for r in results],
-            tags=[r.tag_name for r in results],
-            is_monorepo=True,
-        )
+            # Stage all updated files
+            for file_path in all_updated_files:
+                try:
+                    subprocess.run(
+                        ["git", "add", file_path],
+                        capture_output=True,
+                        check=True,
+                        cwd=repo_root,
+                    )
+                    logger.info(f"Staged file for amendment: {file_path}")
+                except subprocess.CalledProcessError as e:
+                    logger.warning(f"Failed to stage {file_path}: {e}")
+
+            # Amend the commit (skip hooks since original commit already passed them)
+            subprocess.run(
+                ["git", "commit", "--amend", "--no-edit", "--no-verify"],
+                capture_output=True,
+                check=True,
+                cwd=repo_root,
+            )
+            logger.info("Amended commit with version changes")
+
+            return VersionUpdateResult(
+                versions=[str(r.new_version) for r in results],
+                tags=[r.tag_name for r in results],
+                is_monorepo=True,
+            )
 
     except Exception as e:
         logger.error(f"Failed to update monorepo versions: {e}")
@@ -354,6 +402,7 @@ def update_single_version(
     pezin_config: dict,
     config_file: Path,
     repo_root: Path,
+    write_targets: Optional[set] = None,
 ) -> Optional[VersionUpdateResult]:
     """Update version for single-repo mode (original behavior).
 
@@ -363,6 +412,8 @@ def update_single_version(
         pezin_config: Pezin configuration dictionary
         config_file: Path to configuration file
         repo_root: Repository root path
+        write_targets: Repo-relative paths pezin may rewrite; snapshotted for
+            the atomic rollback guard (computed when omitted)
 
     Returns:
         VersionUpdateResult with updated version and tag, or None if no update
@@ -385,43 +436,48 @@ def update_single_version(
         new_version = current_version.bump(version_bump_type, prerelease)
         logger.info(f"Bumping to: {new_version}")
 
-        # Update all configured files
-        updated_files = version_manager.write_versions(new_version)
-        logger.info(f"Updated files: {updated_files}")
+        if write_targets is None:
+            write_targets = _collect_write_targets(pezin_config, repo_root)
+        with atomic_worktree_guard(repo_root, write_targets):
+            # Update all configured files
+            updated_files = version_manager.write_versions(new_version)
+            logger.info(f"Updated files: {updated_files}")
 
-        # Write the changelog entry before staging so it lands in the same amend.
-        cl_config = read_changelog_config(pezin_config)
-        written = write_changelog_entry(commit, str(new_version), repo_root, cl_config)
-        if written is not None:
-            updated_files.append(str(written))
+            # Write the changelog entry before staging so it lands in the same amend.
+            cl_config = read_changelog_config(pezin_config)
+            written = write_changelog_entry(
+                commit, str(new_version), repo_root, cl_config
+            )
+            if written is not None:
+                updated_files.append(str(written))
 
-        # Add all updated files to staging
-        for file_path in updated_files:
-            try:
-                subprocess.run(
-                    ["git", "add", file_path],
-                    capture_output=True,
-                    check=True,
-                    cwd=repo_root,
-                )
-                logger.info(f"Staged file for amendment: {file_path}")
-            except subprocess.CalledProcessError as e:
-                logger.warning(f"Failed to stage {file_path}: {e}")
+            # Add all updated files to staging
+            for file_path in updated_files:
+                try:
+                    subprocess.run(
+                        ["git", "add", file_path],
+                        capture_output=True,
+                        check=True,
+                        cwd=repo_root,
+                    )
+                    logger.info(f"Staged file for amendment: {file_path}")
+                except subprocess.CalledProcessError as e:
+                    logger.warning(f"Failed to stage {file_path}: {e}")
 
-        # Amend the commit with the version changes (skip hooks since original passed)
-        subprocess.run(
-            ["git", "commit", "--amend", "--no-edit", "--no-verify"],
-            capture_output=True,
-            check=True,
-            cwd=repo_root,
-        )
-        logger.info("Amended commit with version changes")
+            # Amend the commit with the version changes (skip hooks since original passed)
+            subprocess.run(
+                ["git", "commit", "--amend", "--no-edit", "--no-verify"],
+                capture_output=True,
+                check=True,
+                cwd=repo_root,
+            )
+            logger.info("Amended commit with version changes")
 
-        return VersionUpdateResult(
-            versions=[str(new_version)],
-            tags=[f"v{new_version}"],
-            is_monorepo=False,
-        )
+            return VersionUpdateResult(
+                versions=[str(new_version)],
+                tags=[f"v{new_version}"],
+                is_monorepo=False,
+            )
 
     except Exception as e:
         logger.error(f"Failed to update version: {e}")
@@ -475,15 +531,47 @@ def update_version_and_amend(
 
         pezin_config = config.get("pezin", {}) if config else {}
 
+        # Never rewrite files whose unstaged changes pre-commit has parked:
+        # a bump here makes the parked-patch restore fail and the user's
+        # unstaged work is dropped from the worktree.
+        write_targets = _collect_write_targets(pezin_config, repo_root)
+        conflicts = find_parked_patch_conflicts(
+            repo_root, write_targets, since=take_hook_start(repo_root)
+        )
+        if conflicts:
+            overlapping = ", ".join(sorted(conflicts))
+            logger.warning(
+                "Skipping version bump: pre-commit parked unstaged changes "
+                f"overlap files pezin would rewrite: {overlapping}"
+            )
+            echo_to_terminal(
+                "[pezin] Skipping version bump: unstaged changes to version "
+                f"files are parked by pre-commit: {overlapping}"
+            )
+            echo_to_terminal(
+                "[pezin] Rewriting them can corrupt the parked-patch restore "
+                "and lose those changes."
+            )
+            echo_to_terminal(
+                "[pezin] Stash or commit those changes first, then commit "
+                "again or run `pezin bump`."
+            )
+            return None
+
         # Check if monorepo mode
         if is_monorepo_mode(pezin_config):
             logger.info("Monorepo mode detected")
             return update_monorepo_versions(
-                commit, version_bump_type, pezin_config, repo_root
+                commit, version_bump_type, pezin_config, repo_root, write_targets
             )
         else:
             return update_single_version(
-                commit, version_bump_type, pezin_config, config_file, repo_root
+                commit,
+                version_bump_type,
+                pezin_config,
+                config_file,
+                repo_root,
+                write_targets,
             )
 
     except Exception as e:
