@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pezin"
-version = "0.8.2"
+version = "0.9.0"
 description = "Automated version bumping and changelog management using conventional commits"
 authors = [
     { name = "Tatus9", email = "rafael@rro.one" },
@@ -57,8 +57,13 @@ markers = [
     "slow: end-to-end hook regression tests that spawn real subprocesses (git, pre-commit); opt-in via `pytest -m slow`",
 ]
 
-[tool.pezin]
-version_files = [
-    { path = "pyproject.toml" },
-    { path = "src/pezin/__init__.py", version_pattern = '__version__\s*=\s*"([^"]+)"', version_replacement = '__version__ = "{version}"' },
-]
+[[tool.pezin.version_files]]
+path = "pyproject.toml"
+
+[[tool.pezin.version_files]]
+path = "src/pezin/__init__.py"
+version_pattern = "__version__\\s*=\\s*\"([^\"]+)\""
+version_replacement = "__version__ = \"{version}\""
+
+[tool.pezin.changelog]
+repo_url = "https://github.com/tatus9/pezin"

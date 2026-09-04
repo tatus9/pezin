@@ -272,3 +272,31 @@ class TestChangelogHookConfig:
         }
         cfg = read_changelog_config(pezin_config, service_name="api")
         assert cfg.path == "TOP.md"
+
+
+def test_changelog_hook_config_repo_url_default_and_override():
+    """repo_url is configurable; None means derive from the git remote."""
+    from pezin.core.config import ChangelogHookConfig, read_changelog_config
+
+    defaults = ChangelogHookConfig.from_dict(None)
+    assert defaults.repo_url is None
+
+    configured = read_changelog_config(
+        {"changelog": {"repo_url": "https://github.com/tatus9/pezin"}}
+    )
+    assert configured.repo_url == "https://github.com/tatus9/pezin"
+
+    # Service-level override wins over top level.
+    service = read_changelog_config(
+        {
+            "changelog": {"repo_url": "https://github.com/tatus9/pezin"},
+            "services": [
+                {
+                    "name": "backend",
+                    "changelog": {"repo_url": "https://github.com/t/back"},
+                }
+            ],
+        },
+        service_name="backend",
+    )
+    assert service.repo_url == "https://github.com/t/back"

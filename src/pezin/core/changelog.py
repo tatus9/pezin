@@ -257,15 +257,18 @@ class ChangelogManager:
         """
         date = date or datetime.now()
         date_str = date.strftime("%Y-%m-%d")
+        unreleased_label = self.config.unreleased_label
 
-        # Create file if it doesn't exist
-        if not path.exists():
-            path.write_text(
-                f"{self.config.header_template}\n\n## [{self.config.unreleased_label}]\n"
-            )
+        # Read existing content; create with the template header when missing.
+        if path.exists():
+            content = path.read_text()
+        else:
+            content = f"{self.config.header_template}\n\n## [{unreleased_label}]\n"
 
-        # Parse existing content
-        content = path.read_text()
+        # Preserve the user's header verbatim: everything above the first
+        # version heading. The configured template is only used when the
+        # file is created above.
+        header = self.extract_header(content)
         sections = self.parse_changelog(content)
 
         # Idempotency guard: if a section for this version already exists,
@@ -278,30 +281,126 @@ class ChangelogManager:
         # Group commits by type
         changes = self.group_commits(commits)
 
-        # Format new version section
-        new_section = [f"## [{version}] - {date_str}"]
-
+        # Promote entries accumulated under [Unreleased] into the new
+        # version section, deduplicated against this commit's own entries.
+        promoted = self.split_unreleased_entries(sections.get(unreleased_label, []))
+        merged: Dict[str, List[str]] = {}
         for section_type, section_title in self.config.sections.items():
-            if section_type in changes and changes[section_type]:
+            section_lines = changes.get(section_type) or []
+            if section_lines:
+                merged[section_title] = list(section_lines)
+        for title, entry_lines in promoted.items():
+            target = merged.setdefault(title, [])
+            for line in entry_lines:
+                if line not in target:
+                    target.append(line)
+
+        # Format new version section: configured titles first, then any
+        # promoted subsection titles the config does not know about.
+        new_section = [f"## [{version}] - {date_str}"]
+        emitted_titles: set = set()
+        for section_title in self.config.sections.values():
+            if merged.get(section_title):
                 new_section.extend([f"### {section_title}", ""])
-                new_section.extend(changes[section_type])
+                new_section.extend(
+                    line
+                    for entry in merged[section_title]
+                    for line in entry.split("\n")
+                )
+                new_section.append("")
+                emitted_titles.add(section_title)
+        for title in promoted:
+            if title not in emitted_titles and merged.get(title):
+                new_section.extend([f"### {title}", ""])
+                new_section.extend(
+                    line for entry in merged[title] for line in entry.split("\n")
+                )
                 new_section.append("")
 
-        if links := self.generate_version_links(version, sections):
-            new_section.extend(["", *links])
+        links = self.generate_version_links(version, sections)
 
-        # Write updated content
+        # Keep-a-Changelog ordering: header, empty [Unreleased], the new
+        # version section, then older sections (already newest-first).
+        # Existing link-definition lines are stripped everywhere and
+        # re-emitted once at the bottom, so regenerated links never
+        # duplicate (or shadow) older definitions.
+        link_pattern = re.compile(r"^\[[^\]]+\]:\s*\S+")
+        older = [ver for ver in sections if ver != unreleased_label]
         new_content = "\n".join(
             [
-                self.config.header_template,
+                header,
+                "",
+                f"## [{unreleased_label}]",
                 "",
                 *new_section,
                 "",
-                *(line for ver in sections for line in sections[ver]),
+                *(
+                    line
+                    for ver in older
+                    for line in sections[ver]
+                    if not link_pattern.match(line)
+                ),
             ]
         )
+        if links:
+            new_content = new_content.rstrip("\n") + "\n\n" + "\n".join(links)
+        if not new_content.endswith("\n"):
+            new_content += "\n"
 
         path.write_text(new_content)
+
+    def extract_header(self, content: str) -> str:
+        """Return the changelog header: content above the first version heading.
+
+        Args:
+            content: Raw changelog content
+
+        Returns:
+            Header text without trailing blank lines. If no version heading
+            exists, the whole content is treated as header.
+        """
+        lines = content.split("\n")
+        for idx, line in enumerate(lines):
+            if self.VERSION_HEADER_PATTERN.match(line):
+                return "\n".join(lines[:idx]).rstrip("\n")
+        return content.rstrip("\n")
+
+    def split_unreleased_entries(
+        self, section_lines: List[str]
+    ) -> Dict[str, List[str]]:
+        """Split an ``[Unreleased]`` section body into subsection entries.
+
+        Args:
+            section_lines: Parsed lines of the unreleased section (the first
+                line is the ``## [Unreleased]`` heading itself)
+
+        Returns:
+            Dict mapping subsection title (from ``###`` headings, empty
+            string for entries directly under the version heading) to the
+            formatted entries. Entries may span multiple lines (indented
+            continuation lines stay attached to their bullet).
+        """
+        result: Dict[str, List[str]] = {}
+        current_title = ""
+        entries: List[str] = []
+
+        def _flush() -> None:
+            if entries:
+                result.setdefault(current_title, []).extend(entries)
+
+        for line in section_lines[1:]:
+            if line.startswith("### "):
+                _flush()
+                entries = []
+                current_title = line[4:].strip()
+            elif line.startswith("- "):
+                _flush()
+                entries = [line]
+            elif line.strip() and entries:
+                # Continuation line of the current multi-line bullet.
+                entries.append(line)
+        _flush()
+        return result
 
 
 def format_commit_message(

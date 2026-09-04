@@ -18,23 +18,30 @@ class ChangelogHookConfig:
         enabled: Skip the changelog write entirely when False.
         path: Path to the changelog file (resolved relative to the repo or service root).
         unreleased_label: Header label used for the in-progress section.
+        repo_url: Repository URL used for version comparison links. When
+            empty, the URL is derived from the ``origin`` git remote (the
+            naive SSH-to-HTTPS conversion can be wrong for SSH host
+            aliases, so explicit configuration is preferred).
     """
 
     enabled: bool = True
     path: str = "CHANGELOG.md"
     unreleased_label: str = "Unreleased"
+    repo_url: Optional[str] = None
 
     @classmethod
     def from_dict(cls, data: Optional[Dict[str, Any]] = None) -> "ChangelogHookConfig":
         """Build config from raw dict, filling missing keys with defaults."""
         data = data or {}
         defaults = cls()
+        repo_url = data.get("repo_url", defaults.repo_url)
         return cls(
             enabled=bool(data.get("enabled", defaults.enabled)),
             path=str(data.get("path", defaults.path)),
             unreleased_label=str(
                 data.get("unreleased_label", defaults.unreleased_label)
             ),
+            repo_url=str(repo_url) if repo_url is not None else None,
         )
 
 

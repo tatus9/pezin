@@ -14,7 +14,7 @@ from .core.changelog import ChangelogConfig, ChangelogManager
 from .core.commit import BumpType, CommitType, ConventionalCommit
 from .core.version import Version, VersionBumpType
 
-__version__ = "0.8.2"
+__version__ = "0.9.0"
 
 __all__ = [
     "Version",

@@ -60,6 +60,22 @@ Both hooks are required: `pezin-prepare` detects amends/rebases and
 cooperates with the data-loss guard; `pezin-post` performs the bump,
 changelog write and tagging.
 
+<details>
+<summary>Direct git hooks (without the pre-commit framework)</summary>
+
+```bash
+pezin install-hooks        # also: pezin hooks-status / pezin uninstall-hooks
+```
+
+Since **v0.9.0** the generated hooks are pinned to the interpreter that
+ran `pezin install-hooks`, so they work from pipx/uv/virtualenv installs
+without the venv on `PATH`. If the hook ever cannot import pezin it warns
+and lets the commit through instead of blocking it — re-run
+`pezin install-hooks` from the right environment to fix. Upgrading from
+≤ 0.8.2? Re-run `pezin install-hooks` once to refresh the shebangs.
+
+</details>
+
 ### Start Using
 
 Just commit with conventional commit format:
@@ -77,9 +93,11 @@ Your version files will be automatically updated!
 Since **v0.8.0** the post-commit hook also writes `CHANGELOG.md` on every
 bump. It adds a new dated `[<version>]` section listing the triggering
 commit under the matching category (Features, Bug Fixes, …) and creates
-the file with a Keep-a-Changelog header if missing. Pre-existing
-`[Unreleased]` entries are left where they are. No config required — it's
-on by default.
+the file with a Keep-a-Changelog header if missing. Since **v0.9.0** the
+file follows Keep-a-Changelog ordering: `## [Unreleased]` stays directly
+below the header, entries accumulated under it are promoted into the new
+version section, and your existing header text is preserved. No config
+required — it's on by default.
 
 Opt out or customise via `[tool.pezin.changelog]`:
 

@@ -51,3 +51,54 @@ def test_generated_hook_script_executes(tmp_path: Path, monkeypatch) -> None:
     assert result.returncode == 0, result.stderr
     assert "OptionInfo" not in result.stderr
     assert "Traceback" not in result.stderr
+
+
+def test_generated_hook_pins_installing_interpreter(tmp_path: Path) -> None:
+    """The hook shebang must be the interpreter running pezin, not `env python3`.
+
+    pipx/uv/virtualenv installs put pezin (and typer/loguru) only inside the
+    venv. An `env python3` shebang resolves outside the venv, the import
+    fails, and a failing prepare-commit-msg aborts every commit.
+    """
+    import sys
+
+    hook_path = create_hook_script(
+        "prepare-commit-msg", "pezin.hooks.prepare_commit_msg", tmp_path
+    )
+
+    shebang = hook_path.read_text().splitlines()[0]
+    assert shebang == f"#!{sys.executable}"
+    assert "env python3" not in shebang
+
+
+def test_generated_hook_degrades_gracefully_on_import_failure(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """A missing pezin install must warn and exit 0, never block the commit."""
+    import subprocess
+    import sys
+
+    hook_path = create_hook_script(
+        "prepare-commit-msg", "pezin.hooks.prepare_commit_msg", tmp_path
+    )
+    script = hook_path.read_text()
+
+    assert "pezin install-hooks" in script
+    assert "sys.exit(1)" not in script
+
+    # Simulate the broken interpreter: run the script body with an interpreter
+    # that cannot import pezin (-S skips site-packages, so the editable .pth
+    # that exposes pezin is never processed).
+    probe = tmp_path / "probe.py"
+    # Execute everything except the shebang line under python -I -S.
+    probe.write_text("\n".join(script.splitlines()[1:]))
+    result = subprocess.run(
+        [sys.executable, "-I", "-S", str(probe)],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        cwd=tmp_path,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "Warning" in result.stderr
+    assert "pezin install-hooks" in result.stderr

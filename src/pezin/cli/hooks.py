@@ -2,6 +2,7 @@
 
 import stat
 import subprocess
+import sys
 from pathlib import Path
 from typing import Optional
 
@@ -52,8 +53,14 @@ def create_hook_script(hook_name: str, python_module: str, hooks_dir: Path) -> P
     """Create a Git hook script that calls the appropriate Python module."""
     hook_path = hooks_dir / hook_name
 
+    # Pin the hook to the interpreter running pezin right now. `env python3`
+    # breaks pipx/uv/virtualenv installs: the ambient python3 cannot import
+    # pezin or its dependencies, and a failing prepare-commit-msg aborts the
+    # commit entirely.
+    interpreter = sys.executable
+
     # Create the hook script
-    script_content = f"""#!/usr/bin/env python3
+    script_content = f"""#!{interpreter}
 \"\"\"
 Git {hook_name} hook managed by Pezin.
 This file is auto-generated. Do not edit manually.
@@ -81,8 +88,15 @@ except ImportError:
             sys.path.insert(0, str(path))
             break
     else:
-        print("Error: Could not find pezin package", file=sys.stderr)
-        sys.exit(1)
+        # Degrade gracefully: a missing pezin install must never block the
+        # commit. Warn loudly and let git proceed.
+        print(
+            "[pezin] Warning: could not import pezin with this interpreter; "
+            "skipping the hook. Re-run `pezin install-hooks` from the "
+            "environment where pezin is installed.",
+            file=sys.stderr,
+        )
+        sys.exit(0)
 
 # Import and run the hook
 try:
@@ -90,10 +104,11 @@ try:
     from {python_module} import main
     typer.run(main)
 except Exception as e:
-    print(f"Error running {hook_name} hook: {{e}}", file=sys.stderr)
+    # Best-effort: version automation must never block the commit itself.
+    print(f"[pezin] Warning: {{hook_name}} hook failed: {{e}}", file=sys.stderr)
     import traceback
     traceback.print_exc()
-    sys.exit(1)
+    sys.exit(0)
 """
 
     hook_path.write_text(script_content)

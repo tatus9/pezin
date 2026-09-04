@@ -278,7 +278,7 @@ def write_changelog_entry(
         manager = ChangelogManager(
             ChangelogConfig(
                 unreleased_label=changelog_config.unreleased_label,
-                repo_url=get_git_repo_url(),
+                repo_url=changelog_config.repo_url or get_git_repo_url(),
             )
         )
         manager.create_if_missing(changelog_path)

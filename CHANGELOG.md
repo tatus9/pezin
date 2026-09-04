@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-09-04
+### ✨ Features
+
+- harden install-hooks and changelog ordering for 0.9.0
+- `python -m pezin` now works (new `__main__.py` entry point).
+
+### 🐛 Bug Fixes
+
+- `pezin install-hooks` no longer generates hooks with a
+  `#!/usr/bin/env python3` shebang. Hooks are pinned to the interpreter
+  that ran the install, so pipx/uv/virtualenv installs work without the
+  venv on `PATH` (previously every commit failed with
+  "Error: Could not find pezin package" and was aborted).
+- Generated hooks that cannot import pezin now warn and exit 0 instead of
+  blocking the commit; hook runtime failures likewise no longer abort
+  commits.
+- `CHANGELOG.md` now follows Keep-a-Changelog ordering: `## [Unreleased]`
+  stays directly below the header, new version sections are inserted
+  below it, entries accumulated under `[Unreleased]` are promoted into
+  the released section (multi-line entries keep their continuation
+  lines), and the existing file header is preserved instead of being
+  overwritten by the template.
+- Changelog version-comparison links are regenerated and emitted once at
+  the bottom of the file; stale definitions no longer accumulate or
+  shadow each other. The link base URL is configurable via
+  `[tool.pezin.changelog] repo_url` (the git-remote derivation mangles
+  SSH host aliases).
+- `pezin --version` reports the synced `pezin.__version__` version file
+  instead of stale install-time metadata (editable installs previously
+  kept reporting the install-time version, e.g. 0.8.0 at 0.8.2).
+
 ### 🧰 Maintenance
 
 - pezin's own releases now keep `src/pezin/__init__.py.__version__` in sync
@@ -14,13 +45,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the package was at 0.8.2).
 - README setup instructions corrected to the real hook ids
   (`pezin-prepare`/`pezin-post`, both required) and the supported
-  `[tool.pezin.changelog]` keys (removed the never-implemented
-  `header_style`); monorepo example rewritten as valid array-of-tables
-  TOML. Changelog-behaviour wording fixed (nothing is "promoted" out of
-  `[Unreleased]`).
+  `[tool.pezin.changelog]` keys; monorepo example rewritten as valid
+  array-of-tables TOML. Changelog-behaviour wording updated for the new
+  promotion semantics.
 - Post-commit hook no longer prints the misleading "'feat' commits don't
   trigger version bumps" line right after a parked-patch skip; the skip
   now returns a distinguishable result (`skipped_reason`).
+
 
 ## [0.8.2] - 2026-08-23
 
@@ -166,7 +197,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cleanup.
 - Update readme.
 
-[Unreleased]: https://github.com/tatus9/pezin/compare/v0.8.2...HEAD
+[Unreleased]: https://github.com/tatus9/pezin/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/tatus9/pezin/compare/v0.8.2...v0.9.0
 [0.8.2]: https://github.com/tatus9/pezin/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/tatus9/pezin/compare/v0.8.0...v0.8.1
 [0.8.0]: https://github.com/tatus9/pezin/compare/v0.7.0...v0.8.0

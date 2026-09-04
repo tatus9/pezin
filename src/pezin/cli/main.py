@@ -51,8 +51,21 @@ console = Console()
 
 
 def get_pezin_version() -> str:
-    """Get the pezin version."""
-    # Try to get version from package metadata first
+    """Get the pezin version.
+
+    Prefers ``pezin.__version__`` because ``src/pezin/__init__.py`` is a
+    configured version file kept in sync on every bump; the recorded
+    ``importlib.metadata`` version is stale between bumps for editable
+    installs (it is frozen at install time).
+    """
+    # The synced version file is authoritative.
+    import pezin
+
+    version = getattr(pezin, "__version__", None)
+    if version:
+        return version
+
+    # Fall back to installed package metadata.
     try:
         import importlib.metadata
 
