@@ -23,7 +23,11 @@
 
 - [x] 5.1 Run `ruff check --fix`, `ruff format`, `pytest`, `pytest -m slow`, and `openspec validate harden-hooks-and-changelog --strict`; resolve findings.
 - [x] 5.2 Update `README.md` install-hooks section if it mentions the python3 requirement; add `[Unreleased]` note to project `CHANGELOG.md`.
-- [ ] 5.3 Commit via conventional commits and let pezin's own hooks bump to 0.9.0; verify `git show HEAD --stat` includes `CHANGELOG.md`, version files, and tag `v0.9.0` exists.
+- [x] 5.3 Commit via conventional commits and let pezin's own hooks bump to 0.9.0; verify `git show HEAD --stat` includes `CHANGELOG.md`, version files, and tag `v0.9.0` exists.
+  - Done twice: the first release commit exposed the multi-line promotion
+    truncation (dogfooding worked as designed); rewound the local-only tag,
+    fixed promotion + link consolidation, re-released. Commit `20d89c8`,
+    tag `v0.9.0`, followed by `fec401b` (uv.lock sync).
 
 ## 6. Follow-ups discovered during apply (dogfood release commit)
 
