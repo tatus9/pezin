@@ -251,3 +251,51 @@ properly detected."""
 
     assert ConventionalCommit.is_fixup_commit(multiline_squash)
     assert ConventionalCommit.parse_with_fixup_handling(multiline_squash) is None
+
+
+def test_get_scopes_single():
+    """Test getting single scope from commit."""
+    message = "feat(backend): add new API endpoint"
+    commit = ConventionalCommit.parse(message)
+    scopes = commit.get_scopes()
+    assert scopes == ["backend"]
+
+
+def test_get_scopes_multiple():
+    """Test getting multiple scopes from comma-separated commit."""
+    message = "feat(backend,local_server): add shared feature"
+    commit = ConventionalCommit.parse(message)
+    scopes = commit.get_scopes()
+    assert scopes == ["backend", "local_server"]
+
+
+def test_get_scopes_with_whitespace():
+    """Test getting scopes with whitespace around commas."""
+    message = "fix(backend , local_server , frontend): shared fix"
+    commit = ConventionalCommit.parse(message)
+    scopes = commit.get_scopes()
+    assert scopes == ["backend", "local_server", "frontend"]
+
+
+def test_get_scopes_empty():
+    """Test getting scopes when none present."""
+    message = "feat: add feature without scope"
+    commit = ConventionalCommit.parse(message)
+    scopes = commit.get_scopes()
+    assert scopes == []
+
+
+def test_get_scopes_empty_after_split():
+    """Test handling empty strings after split."""
+    message = "feat(backend,,): weird scope"
+    commit = ConventionalCommit.parse(message)
+    scopes = commit.get_scopes()
+    assert scopes == ["backend"]
+
+
+def test_get_scopes_special_characters():
+    """Test scopes with special characters."""
+    message = "fix(@core/auth,@core/api): fix auth issues"
+    commit = ConventionalCommit.parse(message)
+    scopes = commit.get_scopes()
+    assert scopes == ["@core/auth", "@core/api"]

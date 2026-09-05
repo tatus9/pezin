@@ -5,7 +5,9 @@ import tomli
 import tomli_w
 from packaging.version import InvalidVersion
 
+from pezin.core.config import MonorepoConfig, ServiceConfig
 from pezin.core.version import (
+    ServiceVersionManager,
     Version,
     VersionBumpType,
     VersionFileConfig,
@@ -314,3 +316,235 @@ class TestVersionManager:
         updated_content = header_file.read_text()
         assert '#define VERSION "1.3.0"' in updated_content
         assert '#define VERSION "1.2.3"' not in updated_content
+
+
+class TestServiceVersionManager:
+    """Tests for ServiceVersionManager class."""
+
+    def test_basic_creation(self, tmp_path):
+        """Test creating ServiceVersionManager."""
+        # Create version file for backend
+        backend_toml = tmp_path / "backend" / "pyproject.toml"
+        backend_toml.parent.mkdir(parents=True)
+        backend_toml.write_text(tomli_w.dumps({"project": {"version": "1.0.0"}}))
+
+        config = MonorepoConfig(
+            services=[
+                ServiceConfig(
+                    name="backend",
+                    version_files=[VersionFileConfig(path=backend_toml)],
+                )
+            ]
+        )
+        manager = ServiceVersionManager(config)
+        assert "backend" in manager._service_managers
+
+    def test_get_services_for_scopes(self, tmp_path):
+        """Test mapping scopes to services."""
+        # Create version files
+        backend_toml = tmp_path / "backend" / "pyproject.toml"
+        backend_toml.parent.mkdir(parents=True)
+        backend_toml.write_text(tomli_w.dumps({"project": {"version": "1.0.0"}}))
+
+        frontend_json = tmp_path / "frontend" / "package.json"
+        frontend_json.parent.mkdir(parents=True)
+        frontend_json.write_text(json.dumps({"version": "2.0.0"}))
+
+        config = MonorepoConfig(
+            services=[
+                ServiceConfig(
+                    name="backend",
+                    version_files=[VersionFileConfig(path=backend_toml)],
+                ),
+                ServiceConfig(
+                    name="frontend",
+                    version_files=[
+                        VersionFileConfig(path=frontend_json, file_type="json")
+                    ],
+                ),
+            ]
+        )
+        manager = ServiceVersionManager(config)
+
+        # Test single scope
+        services, unknown = manager.get_services_for_scopes(["backend"])
+        assert len(services) == 1
+        assert services[0].name == "backend"
+        assert len(unknown) == 0
+
+        # Test multiple scopes
+        services, unknown = manager.get_services_for_scopes(["backend", "frontend"])
+        assert len(services) == 2
+
+        # Test unknown scope
+        services, unknown = manager.get_services_for_scopes(["unknown"])
+        assert len(services) == 0
+        assert unknown == ["unknown"]
+
+    def test_get_default_service(self, tmp_path):
+        """Test getting default service."""
+        backend_toml = tmp_path / "pyproject.toml"
+        backend_toml.write_text(tomli_w.dumps({"project": {"version": "1.0.0"}}))
+
+        config = MonorepoConfig(
+            services=[
+                ServiceConfig(
+                    name="backend",
+                    version_files=[VersionFileConfig(path=backend_toml)],
+                ),
+            ],
+            default_service="backend",
+        )
+        manager = ServiceVersionManager(config)
+
+        default = manager.get_default_service()
+        assert default is not None
+        assert default.name == "backend"
+
+    def test_get_default_service_not_set(self, tmp_path):
+        """Test getting default service when not configured."""
+        backend_toml = tmp_path / "pyproject.toml"
+        backend_toml.write_text(tomli_w.dumps({"project": {"version": "1.0.0"}}))
+
+        config = MonorepoConfig(
+            services=[
+                ServiceConfig(
+                    name="backend",
+                    version_files=[VersionFileConfig(path=backend_toml)],
+                ),
+            ]
+        )
+        manager = ServiceVersionManager(config)
+
+        default = manager.get_default_service()
+        assert default is None
+
+    def test_bump_service(self, tmp_path):
+        """Test bumping a single service version."""
+        backend_toml = tmp_path / "backend" / "pyproject.toml"
+        backend_toml.parent.mkdir(parents=True)
+        backend_toml.write_text(tomli_w.dumps({"project": {"version": "1.0.0"}}))
+
+        service = ServiceConfig(
+            name="backend",
+            version_files=[VersionFileConfig(path=backend_toml)],
+        )
+        config = MonorepoConfig(services=[service])
+        manager = ServiceVersionManager(config)
+
+        result = manager.bump_service(service, VersionBumpType.MINOR)
+        assert result is not None
+        assert result.service_name == "backend"
+        assert str(result.old_version) == "1.0.0"
+        assert str(result.new_version) == "1.1.0"
+        assert result.tag_name == "backend-v1.1.0"
+        assert len(result.updated_files) == 1
+
+        # Verify file was updated
+        updated = tomli.loads(backend_toml.read_text())
+        assert updated["project"]["version"] == "1.1.0"
+
+    def test_bump_services_multiple(self, tmp_path):
+        """Test bumping multiple services."""
+        # Create backend version file
+        backend_toml = tmp_path / "backend" / "pyproject.toml"
+        backend_toml.parent.mkdir(parents=True)
+        backend_toml.write_text(tomli_w.dumps({"project": {"version": "1.0.0"}}))
+
+        # Create frontend version file
+        frontend_json = tmp_path / "frontend" / "package.json"
+        frontend_json.parent.mkdir(parents=True)
+        frontend_json.write_text(json.dumps({"version": "2.0.0"}))
+
+        backend_service = ServiceConfig(
+            name="backend",
+            version_files=[VersionFileConfig(path=backend_toml)],
+        )
+        frontend_service = ServiceConfig(
+            name="frontend",
+            version_files=[VersionFileConfig(path=frontend_json, file_type="json")],
+        )
+        config = MonorepoConfig(services=[backend_service, frontend_service])
+        manager = ServiceVersionManager(config)
+
+        results = manager.bump_services(
+            [backend_service, frontend_service], VersionBumpType.PATCH
+        )
+        assert len(results) == 2
+
+        # Check backend
+        backend_result = next(r for r in results if r.service_name == "backend")
+        assert str(backend_result.new_version) == "1.0.1"
+
+        # Check frontend
+        frontend_result = next(r for r in results if r.service_name == "frontend")
+        assert str(frontend_result.new_version) == "2.0.1"
+
+    def test_bump_service_with_prerelease(self, tmp_path):
+        """Test bumping service with prerelease label."""
+        backend_toml = tmp_path / "pyproject.toml"
+        backend_toml.write_text(tomli_w.dumps({"project": {"version": "1.0.0"}}))
+
+        service = ServiceConfig(
+            name="backend",
+            version_files=[VersionFileConfig(path=backend_toml)],
+        )
+        config = MonorepoConfig(services=[service])
+        manager = ServiceVersionManager(config)
+
+        result = manager.bump_service(
+            service, VersionBumpType.MAJOR, prerelease="alpha"
+        )
+        assert str(result.new_version) == "2.0.0-alpha"
+
+    def test_bump_service_custom_tag_prefix(self, tmp_path):
+        """Test bumping service with custom tag prefix."""
+        backend_toml = tmp_path / "pyproject.toml"
+        backend_toml.write_text(tomli_w.dumps({"project": {"version": "1.0.0"}}))
+
+        service = ServiceConfig(
+            name="backend",
+            version_files=[VersionFileConfig(path=backend_toml)],
+            tag_prefix="be-release-",
+        )
+        config = MonorepoConfig(services=[service])
+        manager = ServiceVersionManager(config)
+
+        result = manager.bump_service(service, VersionBumpType.PATCH)
+        assert result.tag_name == "be-release-1.0.1"
+
+    def test_from_config(self, tmp_path):
+        """Test creating ServiceVersionManager from config dict."""
+        backend_toml = tmp_path / "backend" / "pyproject.toml"
+        backend_toml.parent.mkdir(parents=True)
+        backend_toml.write_text(tomli_w.dumps({"project": {"version": "1.0.0"}}))
+
+        config_dict = {
+            "mode": "monorepo",
+            "services": [
+                {
+                    "name": "backend",
+                    "version_files": [{"path": str(backend_toml)}],
+                },
+            ],
+            "default_service": "backend",
+            "require_scope": True,
+        }
+
+        manager = ServiceVersionManager.from_config(config_dict)
+        assert len(manager.config.services) == 1
+        assert manager.config.default_service == "backend"
+        assert manager.config.require_scope is True
+
+    def test_bump_nonexistent_service(self, tmp_path):
+        """Test bumping a service that doesn't have a manager."""
+        backend_toml = tmp_path / "pyproject.toml"
+        backend_toml.write_text(tomli_w.dumps({"project": {"version": "1.0.0"}}))
+
+        # Create service without version files
+        service = ServiceConfig(name="empty", version_files=[])
+        config = MonorepoConfig(services=[service])
+        manager = ServiceVersionManager(config)
+
+        result = manager.bump_service(service, VersionBumpType.MINOR)
+        assert result is None

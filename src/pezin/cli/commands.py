@@ -85,6 +85,24 @@ def read_config(config_file: Path) -> Dict[str, Any]:
                         )
                         config["pezin"]["version_files"][i]["path"] = str(abs_path)
 
+        # Handle monorepo services configuration
+        if "services" in config["pezin"]:
+            services = config["pezin"]["services"]
+            for i, service in enumerate(services):
+                if isinstance(service, dict) and "version_files" in service:
+                    for j, file_config in enumerate(service["version_files"]):
+                        if isinstance(file_config, dict) and "path" in file_config:
+                            file_path = Path(file_config["path"])
+                            if not file_path.is_absolute():
+                                abs_path = resolve_path(file_path, base_dir)
+                                logger.debug(
+                                    f"Making services[{i}].version_files[{j}] path "
+                                    f"absolute: {file_path} -> {abs_path}"
+                                )
+                                config["pezin"]["services"][i]["version_files"][j][
+                                    "path"
+                                ] = str(abs_path)
+
         if "changelog_file" in config["pezin"]:
             changelog_path = Path(config["pezin"]["changelog_file"])
             if not changelog_path.is_absolute():
@@ -437,14 +455,12 @@ def update_changelog(
 
         logger.debug(f"Using changelog file: {actual_file}")
 
-        # Create changelog file if it doesn't exist
-        if not dry_run:
-            actual_file.parent.mkdir(parents=True, exist_ok=True)
-            if not actual_file.exists():
-                actual_file.write_text("# Changelog\n\n## [Unreleased]\n")
-
         manager_config = ChangelogConfig(repo_url=get_git_repo_url())
         manager = ChangelogManager(manager_config)
+
+        # Create changelog file if it doesn't exist (shared with post-commit hook).
+        if not dry_run:
+            manager.create_if_missing(actual_file)
 
         if not dry_run:
             manager.update_changelog(actual_file, version, commits, datetime.now())

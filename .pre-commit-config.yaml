@@ -26,10 +26,18 @@ repos:
 
   - repo: local
     hooks:
-    - id: pezin
-      name: Pezin Version Control
-      entry: python -m pezin.hooks.pre_commit
+    - id: pezin-prepare-commit-msg
+      name: Pezin Prepare Commit Message
+      entry: python -m pezin.hooks.prepare_commit_msg
       language: system
-      stages: [commit-msg]
+      stages: [prepare-commit-msg]
+      always_run: true
+      pass_filenames: false
+
+    - id: pezin-post-commit
+      name: Pezin Post Commit
+      entry: python -m pezin.hooks.post_commit
+      language: system
+      stages: [post-commit]
       always_run: true
       pass_filenames: false

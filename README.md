@@ -43,17 +43,38 @@ Add to your `.pre-commit-config.yaml`:
 ```yaml
 repos:
   - repo: https://github.com/tatus9/pezin
-    rev: v0.1.2  # Use the latest version
+    rev: v0.8.2  # Use the latest version
     hooks:
-      - id: pezin
+      - id: pezin-prepare
+      - id: pezin-post
 ```
 
 Install the hooks:
 
 ```bash
 pip install pre-commit pezin
-pre-commit install --hook-type commit-msg
+pre-commit install --hook-type prepare-commit-msg --hook-type post-commit
 ```
+
+Both hooks are required: `pezin-prepare` detects amends/rebases and
+cooperates with the data-loss guard; `pezin-post` performs the bump,
+changelog write and tagging.
+
+<details>
+<summary>Direct git hooks (without the pre-commit framework)</summary>
+
+```bash
+pezin install-hooks        # also: pezin hooks-status / pezin uninstall-hooks
+```
+
+Since **v0.9.0** the generated hooks are pinned to the interpreter that
+ran `pezin install-hooks`, so they work from pipx/uv/virtualenv installs
+without the venv on `PATH`. If the hook ever cannot import pezin it warns
+and lets the commit through instead of blocking it — re-run
+`pezin install-hooks` from the right environment to fix. Upgrading from
+≤ 0.8.2? Re-run `pezin install-hooks` once to refresh the shebangs.
+
+</details>
 
 ### Start Using
 
@@ -66,6 +87,91 @@ git commit -m "feat!: redesign API"              # 1.1.1 → 2.0.0
 ```
 
 Your version files will be automatically updated!
+
+## Changelog Automation
+
+Since **v0.8.0** the post-commit hook also writes `CHANGELOG.md` on every
+bump. It adds a new dated `[<version>]` section listing the triggering
+commit under the matching category (Features, Bug Fixes, …) and creates
+the file with a Keep-a-Changelog header if missing. Since **v0.9.0** the
+file follows Keep-a-Changelog ordering: `## [Unreleased]` stays directly
+below the header, entries accumulated under it are promoted into the new
+version section, and your existing header text is preserved. No config
+required — it's on by default.
+
+Opt out or customise via `[tool.pezin.changelog]`:
+
+```toml
+[tool.pezin.changelog]
+enabled = true                  # set false to skip the write
+path = "CHANGELOG.md"           # relative to the repo or service root
+unreleased_label = "Unreleased"
+```
+
+If `CHANGELOG.md` does not exist, pezin creates it with a
+Keep-a-Changelog header before writing the new section. A failure while
+writing the changelog is logged as a warning and the version bump still
+lands — the changelog is best-effort, never blocking.
+
+In monorepo mode each service can override the same keys in that
+service's `[[tool.pezin.services]]` entry; per-service entries are
+resolved relative to that service's root:
+
+```toml
+[[tool.pezin.services]]
+name = "api"
+version_files = [{ path = "api/package.json", file_type = "json" }]
+[tool.pezin.services.changelog]
+path = "api/CHANGELOG.md"
+```
+
+### Upgrading from < 0.8.0
+
+Projects upgrading from versions before 0.8.0 will see `CHANGELOG.md`
+edited automatically on the first conventional commit after upgrade.
+If you maintain the changelog by hand, set `enabled = false` to keep
+the previous behaviour.
+
+## Unstaged Changes and the pre-commit Data-Loss Guard
+
+Under the `pre-commit` framework, any unstaged changes are "parked" in a
+patch file while hooks run, then re-applied afterwards. If a hook rewrites
+one of those files, the re-apply can fail and the unstaged work disappears
+from the worktree (it survives only in `~/.cache/pre-commit/patch*`).
+
+Since **v0.8.1** pezin guards against this:
+
+- **Skips the bump** when pre-commit has parked unstaged changes to a file
+  pezin would rewrite (version files or `CHANGELOG.md`). The hook prints a
+  message explaining the skip; stash or commit those changes, then commit
+  again or run `pezin bump` to bump manually.
+- **Atomic rollback**: if pezin's own write/amend path fails halfway, the
+  worktree, index and `HEAD` are restored to their pre-hook state - no
+  half-applied bumps, no leftover files.
+
+Unstaged changes to *other* files never block the bump; the parked patch
+restores cleanly around it.
+
+> The guard relies on `pezin-prepare` (installed above) marking the start
+> of each commit. Without it — e.g. only `pezin-post` installed — the
+> guard falls back to a 60-second recency window, and a parked patch older
+> than that (slow hook environments being built, slow sibling hooks) can
+> slip past it. Install both hooks.
+
+If you were hit by this bug before v0.8.1, your "lost" work is still in the
+patch file pre-commit logged (`~/.cache/pre-commit/pre-commit.log` names
+it). Recover with:
+
+```bash
+git apply --exclude=<conflicting-file> --whitespace=nowarn <patch-file>
+```
+
+> **Note for local-repo consumers** (`repo: <path>, rev: HEAD` or a branch):
+> pre-commit keys hook environments on the `rev` *string*, so a moved HEAD
+> does **not** refresh them - `pre-commit install-hooks` alone keeps running
+> the old code. Pin the rev to a released tag (edit it manually or run
+> `pre-commit autoupdate`); the changed rev forces the environment rebuild.
+> Verify with `pre-commit run pezin-post --all-files -v` after upgrading.
 
 ## Conventional Commits
 

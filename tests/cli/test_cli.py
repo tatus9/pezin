@@ -462,3 +462,34 @@ def test_version_ci_flag_no_formatting(test_project_files, cli_runner):
 
     finally:
         os.chdir(original_cwd)
+
+
+def test_get_pezin_version_prefers_synced_version_file():
+    """`pezin.__version__` (a configured version file) is authoritative.
+
+    importlib.metadata is frozen at install time for editable installs and
+    goes stale between bumps (reported 0.8.0 while the code was 0.8.2).
+    """
+    from pezin import __version__
+    from pezin.cli.main import get_pezin_version
+
+    assert __version__
+    assert get_pezin_version() == __version__
+
+
+def test_python_dash_m_pezin_reports_version():
+    """`python -m pezin` works and reports the synced version."""
+    import subprocess
+    import sys
+
+    from pezin import __version__
+
+    result = subprocess.run(
+        [sys.executable, "-m", "pezin", "--version"],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        cwd=str(Path(__file__).parents[2]),
+    )
+    assert result.returncode == 0, result.stderr
+    assert __version__ in result.stdout

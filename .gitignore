@@ -16,3 +16,8 @@ wheels/
 # IDEs and Editors
 .vscode/
 .idea/
+
+# Test/coverage artifacts
+.coverage
+coverage.xml
+release_notes.md

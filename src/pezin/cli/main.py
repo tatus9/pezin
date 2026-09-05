@@ -51,8 +51,21 @@ console = Console()
 
 
 def get_pezin_version() -> str:
-    """Get the pezin version."""
-    # Try to get version from package metadata first
+    """Get the pezin version.
+
+    Prefers ``pezin.__version__`` because ``src/pezin/__init__.py`` is a
+    configured version file kept in sync on every bump; the recorded
+    ``importlib.metadata`` version is stale between bumps for editable
+    installs (it is frozen at install time).
+    """
+    # The synced version file is authoritative.
+    import pezin
+
+    version = getattr(pezin, "__version__", None)
+    if version:
+        return version
+
+    # Fall back to installed package metadata.
     try:
         import importlib.metadata
 
@@ -196,8 +209,53 @@ def _show_version(ci_mode: bool = False) -> None:
     Args:
         ci_mode: If True, output only the raw project version for CI pipelines.
     """
-    project_name, project_version = get_current_project_info()
+    from ..core.config import MonorepoConfig, is_monorepo_mode
+    from ..core.version import ServiceVersionManager
+
     pezin_version = get_pezin_version()
+
+    # Try to read config to check for monorepo mode
+    cwd = Path.cwd()
+    config_file = cwd / "pyproject.toml"
+    pezin_config = {}
+
+    if config_file.exists():
+        try:
+            with open(config_file, "rb") as f:
+                data = tomli.load(f)
+            pezin_config = data.get("tool", {}).get("pezin", {})
+        except Exception:
+            pass
+
+    if is_monorepo_mode(pezin_config):
+        # Monorepo mode: show all service versions
+        if ci_mode:
+            console.print(
+                "[red]Error:[/red] CI mode not supported for monorepo (use --service flag)",
+                style="bold",
+            )
+            raise typer.Exit(code=1)
+
+        monorepo_config = MonorepoConfig.from_dict(pezin_config)
+        svm = ServiceVersionManager(monorepo_config)
+
+        console.print("[bold]Service Versions:[/bold]")
+        for service in monorepo_config.services:
+            manager = svm._service_managers.get(service.name)
+            if manager:
+                try:
+                    version = manager.get_primary_version()
+                    console.print(f"  {service.name}: {version}")
+                except Exception:
+                    console.print(f"  {service.name}: [dim]unknown[/dim]")
+            else:
+                console.print(f"  {service.name}: [dim]not configured[/dim]")
+
+        console.print(f"\npezin {pezin_version}")
+        raise typer.Exit()
+
+    # Standard mode: existing behavior
+    project_name, project_version = get_current_project_info()
 
     if ci_mode:
         # CI mode: output only raw project version
@@ -232,31 +290,7 @@ def version_command(
     ),
 ) -> None:
     """Show pezin version and exit."""
-    # Try to get current project info first
-    project_name, project_version = get_current_project_info()
-    pezin_version = get_pezin_version()
-
-    # CI mode: output only raw project version
-    if ci:
-        if project_version and project_name != "pezin":
-            print(project_version)
-        else:
-            console.print(
-                "[red]Error:[/red] No project version found in current directory",
-                style="bold",
-            )
-            raise typer.Exit(code=1)
-        return
-
-    # Normal mode: show project and pezin versions
-    if project_version and project_name != "pezin":
-        if project_name:
-            console.print(f"{project_name} {project_version}")
-        else:
-            console.print(project_version)
-
-    # Always show pezin version
-    console.print(f"pezin {pezin_version}")
+    _show_version(ci_mode=ci)
 
 
 @app.callback()
@@ -640,6 +674,11 @@ def hook_command(
         help="Skip amend detection (useful for testing)",
         hidden=True,
     ),
+    auto_amend: Optional[bool] = typer.Option(
+        None,
+        "--auto-amend/--no-auto-amend",
+        help="Override auto-amend behavior (amend commit after staging version files)",
+    ),
 ) -> None:
     """Process a commit message file for version bumping.
 
@@ -662,6 +701,7 @@ def hook_command(
             config_file=config_file,
             version_file=version_file,
             skip_amend_detection=skip_amend_detection,
+            auto_amend=auto_amend,
         )
 
     except typer.Exit:

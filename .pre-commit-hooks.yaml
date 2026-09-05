@@ -1,9 +1,17 @@
-- id: pezin
-  name: Pezin Version Control
-  description: Automated version bumping based on conventional commits
-  entry: python -m pezin.hooks.pre_commit
+- id: pezin-prepare
+  name: Pezin Prepare Commit
+  description: Detects amend/rebase operations and validates commit format
+  entry: python -m pezin.hooks.prepare_commit_msg
   language: python
-  stages: [commit-msg]
+  stages: [prepare-commit-msg]
   always_run: true
   pass_filenames: false
-  require_serial: true
+
+- id: pezin-post
+  name: Pezin Post Commit
+  description: Bumps version and creates git tags after commit completes
+  entry: python -m pezin.hooks.post_commit
+  language: python
+  stages: [post-commit]
+  always_run: true
+  pass_filenames: false

@@ -11,10 +11,27 @@ import typer
 
 from ..core.commit import ConventionalCommit
 from ..logging import get_logger, setup_logging
+from .safety import record_hook_start
 
 # Set up centralized logging
 setup_logging()
 logger = get_logger()
+
+
+def echo_to_terminal(message: str) -> None:
+    """Write message directly to terminal, bypassing pre-commit's capture.
+
+    Pre-commit framework captures stdout/stderr from hooks. To ensure user
+    feedback is visible, we write directly to /dev/tty when available.
+    Falls back to stderr if tty is not available.
+    """
+    try:
+        with open("/dev/tty", "w") as tty:
+            tty.write(f"{message}\n")
+            tty.flush()
+    except (OSError, IOError):
+        # Fallback to stderr if /dev/tty is not available (e.g., in CI)
+        typer.echo(message, err=True)
 
 
 def get_repo_root() -> Path:
@@ -45,6 +62,13 @@ def is_amend_commit(
     Returns:
         True if this is an amend operation, False otherwise
     """
+    # First, try to get from environment variables (pre-commit framework)
+    # Pre-commit passes git hook arguments as env vars, not CLI args
+    if commit_source is None:
+        commit_source = os.environ.get("PRE_COMMIT_COMMIT_MSG_SOURCE")
+    if commit_sha is None:
+        commit_sha = os.environ.get("PRE_COMMIT_COMMIT_OBJECT_NAME")
+
     logger.debug("Starting amend detection for prepare-commit-msg")
     logger.debug(f"Commit source: {commit_source}")
     logger.debug(f"Commit SHA: {commit_sha}")
@@ -173,6 +197,24 @@ def main(
 def commit_analysis(commit_msg_file, commit_source, commit_sha):
     logger.debug("Pezin prepare-commit-msg hook starting...")
 
+    # Stamp this hook's start time for the post-commit parked-patch guard.
+    # Must happen before any early-exit path below.
+    try:
+        record_hook_start(get_repo_root())
+    except Exception as e:
+        logger.debug(f"Could not record hook start: {e}")
+
+    # Get from environment variables if not provided via CLI
+    # Pre-commit framework passes git hook arguments as env vars, not CLI args
+    if commit_source is None:
+        commit_source = os.environ.get("PRE_COMMIT_COMMIT_MSG_SOURCE")
+    if commit_sha is None:
+        commit_sha = os.environ.get("PRE_COMMIT_COMMIT_OBJECT_NAME")
+    if commit_msg_file is None:
+        env_file = os.environ.get("PRE_COMMIT_COMMIT_MSG_FILE")
+        if env_file:
+            commit_msg_file = Path(env_file)
+
     # Log hook arguments for debugging
     logger.debug(
         f"Hook arguments: file={commit_msg_file}, source={commit_source}, sha={commit_sha}"
@@ -216,6 +258,7 @@ def commit_analysis(commit_msg_file, commit_source, commit_sha):
             logger.debug(f"Created skip flag: {skip_flag}")
         except Exception as e:
             logger.warning(f"Failed to create skip flag: {e}")
+        echo_to_terminal("[pezin] Amend detected - version bump will be skipped")
         sys.exit(0)
 
     # Read commit message
@@ -236,6 +279,7 @@ def commit_analysis(commit_msg_file, commit_source, commit_sha):
             logger.debug(f"Created skip flag: {skip_flag}")
         except Exception as e:
             logger.warning(f"Failed to create skip flag: {e}")
+        echo_to_terminal("[pezin] Fixup/squash commit - version bump will be skipped")
         sys.exit(0)
 
     # Log basic info
