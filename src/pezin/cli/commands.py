@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import tomli
-import tomli_w
+import tomlkit
 
 from ..core.changelog import ChangelogConfig, ChangelogManager
 from ..core.commit import ConventionalCommit
@@ -152,9 +152,15 @@ def _extract_version_from_section(data, section_name, debug_prefix):
 
 
 def write_toml_version(file_path: Path, new_version: str) -> None:
-    """Write version to a TOML file."""
+    """Write version to a TOML file.
+
+    Uses tomlkit so the rewrite preserves everything except the version
+    value: comments, key order, whitespace and comment-only tables.
+    """
     try:
-        data = read_toml_file(file_path)
+        data = tomlkit.parse(
+            file_path.read_text(encoding="utf-8") if file_path.is_file() else ""
+        )
 
         # Update in existing location if found
         if "project" in data and "version" in data["project"]:
@@ -173,7 +179,7 @@ def write_toml_version(file_path: Path, new_version: str) -> None:
                 data["project"] = {}
             data["project"]["version"] = new_version
 
-        file_path.write_text(tomli_w.dumps(data))
+        file_path.write_text(tomlkit.dumps(data), encoding="utf-8")
     except Exception as e:
         raise ValueError(f"Failed to write TOML file: {e}") from e
 

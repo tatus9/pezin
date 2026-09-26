@@ -493,3 +493,30 @@ def test_python_dash_m_pezin_reports_version():
     )
     assert result.returncode == 0, result.stderr
     assert __version__ in result.stdout
+
+
+def test_write_toml_version_preserves_comments(tmp_path):
+    """The CLI's manual TOML bump changes only the version value."""
+    from pezin.cli.commands import write_toml_version
+
+    original = """\
+# doodoo project configuration
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "doodoo"
+# Keep in sync with the deployed chart.
+version = "0.75.0"
+
+[tool.pezin]
+# Defaults are fine; this table exists to document them.
+"""
+    toml_file = tmp_path / "pyproject.toml"
+    toml_file.write_text(original)
+
+    write_toml_version(toml_file, "0.76.0")
+
+    expected = original.replace('version = "0.75.0"', 'version = "0.76.0"')
+    assert toml_file.read_text() == expected

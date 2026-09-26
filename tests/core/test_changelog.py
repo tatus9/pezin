@@ -354,6 +354,68 @@ def test_update_changelog_promotes_multiline_entries(tmp_path):
     assert "- add exporter" in section
 
 
+def test_update_changelog_merges_loosely_titled_subsections(tmp_path):
+    """Promoted subsections with variant titles merge under the canonical
+    configured titles: breaking first, one Features section, no leftover
+    unknown-titled duplicates."""
+    path = tmp_path / "CHANGELOG.md"
+    path.write_text(
+        "# Changelog\n\n"
+        "## [Unreleased]\n"
+        "### ⚠️ Breaking Changes\n\n"
+        "- drop python 3.10\n\n"
+        "### ✨ Features\n\n"
+        "- support plugins\n\n"
+        "### 🔧 Refactors\n\n"
+        "- split core module\n"
+    )
+
+    manager = ChangelogManager()
+    manager.update_changelog(
+        path, "1.0.0", [ConventionalCommit.parse("feat: add exporter")]
+    )
+
+    content = path.read_text()
+    section = content[content.index("## [1.0.0]") :]
+
+    # Breaking changes are emitted before every other section
+    breaking_idx = section.index("### ⚠ BREAKING CHANGES")
+    features_idx = section.index("### ✨ Features")
+    refactor_idx = section.index("### ♻️ Refactor")
+    assert breaking_idx < features_idx < refactor_idx
+
+    # Exactly one Features section, promoted entries merged with the commit's
+    assert section.count("### ✨ Features") == 1
+    features_block = section[features_idx:refactor_idx]
+    assert "- support plugins" in features_block
+    assert "- add exporter" in features_block
+    assert "- drop python 3.10" in section[breaking_idx:features_idx]
+
+    # Refactor entries merged under the canonical title, not a trailing duplicate
+    assert "- split core module" in section[refactor_idx:]
+    assert "🔧 Refactors" not in section
+    assert "⚠️ Breaking Changes" not in section
+
+
+def test_update_changelog_preserves_blank_lines_in_multiline_entries(tmp_path):
+    """A bullet followed by a blank line and an indented fenced code block
+    round-trips byte-identically through promotion."""
+    entry = "- run `pezin install`\n\n  ```bash\n  pezin install-hooks\n  ```"
+    path = tmp_path / "CHANGELOG.md"
+    path.write_text(
+        "# Changelog\n\n## [Unreleased]\n### ✨ Features\n\n" + entry + "\n"
+    )
+
+    manager = ChangelogManager()
+    manager.update_changelog(
+        path, "0.9.0", [ConventionalCommit.parse("feat: add exporter")]
+    )
+
+    content = path.read_text()
+    section = content[content.index("## [0.9.0]") :]
+    assert entry in section
+
+
 def test_update_changelog_consolidates_link_definitions(tmp_path):
     """Link definitions are emitted once at the bottom, never duplicated."""
     manager = ChangelogManager(

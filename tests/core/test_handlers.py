@@ -92,6 +92,33 @@ class TestTomlFileHandler:
         updated_data = tomli.loads(toml_file.read_text())
         assert updated_data["project"]["version"] == "1.0.0"
 
+    def test_write_version_preserves_comments_and_comment_only_tables(self, tmp_path):
+        """A bump rewrites exactly the version value: comments, key order and
+        comment-only tables stay byte-identical."""
+        original = """\
+# doodoo project configuration
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "doodoo"
+# Keep in sync with the deployed chart.
+version = "0.75.0"
+
+[tool.pezin]
+# Defaults are fine; this table exists to document them.
+"""
+        toml_file = tmp_path / "pyproject.toml"
+        toml_file.write_text(original)
+
+        handler = TomlFileHandler(toml_file)
+        handler.read_version()  # Set _found_key
+        handler.write_version(Version("0.76.0"))
+
+        expected = original.replace('version = "0.75.0"', 'version = "0.76.0"')
+        assert toml_file.read_text() == expected
+
     def test_supports_file(self):
         """Test file support detection."""
         handler = TomlFileHandler(Path("dummy"))

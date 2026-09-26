@@ -12,8 +12,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-import tomli
-import tomli_w
+import tomlkit
 import typer
 
 from ..cli.commands import read_config
@@ -443,9 +442,10 @@ def update_version_legacy(
         if not version_file.exists():
             raise ValueError(f"Version file not found: {version_file}")
 
-        with open(version_file, "rb") as f:
-            config = tomli.load(f)
-            current = config["project"]["version"]
+        # tomlkit round-trip: only the version value changes; comments,
+        # key order and comment-only tables are preserved.
+        config = tomlkit.parse(version_file.read_text(encoding="utf-8"))
+        current = config["project"]["version"]
         logger.info(f"Current version: {current}")
 
         version = Version.parse(current)
@@ -454,8 +454,7 @@ def update_version_legacy(
         logger.info(f"Bumping to: {new_version}")
 
         config["project"]["version"] = str(new_version)
-        with open(version_file, "wb") as f:
-            tomli_w.dump(config, f)
+        version_file.write_text(tomlkit.dumps(config), encoding="utf-8")
 
         try:
             subprocess.run(
