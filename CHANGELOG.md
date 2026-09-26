@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-09-26
+### 🐛 Bug Fixes
+
+- preserve user files on version bump
+- TOML version bumps (post-commit hook, manual CLI bump and the legacy
+  hook path) now rewrite exactly the version value: comments, key order,
+  formatting and comment-only tables are preserved byte-identical
+  (previously the whole file was re-dumped, silently deleting comments).
+- `[Unreleased]` promotion merges loosely-titled subsections under the
+  canonical configured titles — case-insensitive, ignoring emoji and
+  variation selectors, singular/plural treated as equal (e.g.
+  `### ⚠️ Breaking Changes` merges under `### ⚠ BREAKING CHANGES`);
+  breaking changes are emitted first and unknown titles keep their
+  original order after the known ones.
+- Blank lines inside multi-line changelog entries (e.g. between a bullet
+  and its indented fenced code block) survive promotion; only trailing
+  blank lines are dropped.
+
+
 ## [0.9.0] - 2026-09-04
 ### ✨ Features
 
@@ -197,7 +216,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cleanup.
 - Update readme.
 
-[Unreleased]: https://github.com/tatus9/pezin/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/tatus9/pezin/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/tatus9/pezin/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/tatus9/pezin/compare/v0.8.2...v0.9.0
 [0.8.2]: https://github.com/tatus9/pezin/compare/v0.8.1...v0.8.2
 [0.8.1]: https://github.com/tatus9/pezin/compare/v0.8.0...v0.8.1

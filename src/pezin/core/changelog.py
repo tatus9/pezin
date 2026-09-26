@@ -19,6 +19,7 @@ Example:
 """
 
 import re
+import unicodedata
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -41,6 +42,41 @@ DEFAULT_SECTIONS = {
     CommitType.TEST: "🧪 Tests",
     CommitType.CHORE: "🔧 Chore",
 }
+
+# Stripped before comparing section titles: emoji variation selector,
+# zero-width joiner.
+_INVISIBLE_MARKS = {"\ufe0f", "\u200d"}
+
+
+def _normalize_section_title(title: str) -> str:
+    """Normalize a section title for loose matching against config titles.
+
+    Casefolds, collapses whitespace, strips emoji/symbols (variation
+    selectors included) and folds naive English singular/plural word forms,
+    so ``⚠️ Breaking Changes`` matches ``⚠ BREAKING CHANGES`` and
+    ``Refactors`` matches ``♻️ Refactor``.
+    """
+    cleaned = [
+        char
+        for char in title
+        if char not in _INVISIBLE_MARKS
+        and not unicodedata.category(char).startswith(("So", "Sk"))
+    ]
+    words = "".join(cleaned).casefold().split()
+    return " ".join(_singularize(word) for word in words)
+
+
+def _singularize(word: str) -> str:
+    """Naively fold an English plural to its singular form."""
+    if (
+        len(word) > 3
+        and word.endswith("es")
+        and word[:-2].endswith(("s", "x", "z", "ch", "sh"))
+    ):
+        return word[:-2]
+    if len(word) > 3 and word.endswith("s") and not word.endswith("ss"):
+        return word[:-1]
+    return word
 
 
 @dataclass
@@ -283,16 +319,23 @@ class ChangelogManager:
 
         # Promote entries accumulated under [Unreleased] into the new
         # version section, deduplicated against this commit's own entries.
+        # Promoted titles are matched to configured titles loosely (see
+        # _normalize_section_title) and merged under the canonical title.
         promoted = self.split_unreleased_entries(sections.get(unreleased_label, []))
         merged: Dict[str, List[str]] = {}
         for section_type, section_title in self.config.sections.items():
             section_lines = changes.get(section_type) or []
             if section_lines:
                 merged[section_title] = list(section_lines)
+        canonical_titles = {
+            _normalize_section_title(title): title
+            for title in self.config.sections.values()
+        }
         for title, entry_lines in promoted.items():
-            target = merged.setdefault(title, [])
+            target_title = canonical_titles.get(_normalize_section_title(title), title)
+            target = merged.setdefault(target_title, [])
             for line in entry_lines:
-                if line not in target:
+                if not line.strip() or line not in target:
                     target.append(line)
 
         # Format new version section: configured titles first, then any
@@ -385,6 +428,10 @@ class ChangelogManager:
         entries: List[str] = []
 
         def _flush() -> None:
+            # Drop only trailing blank lines; interior blanks (before an
+            # indented continuation) belong to the entry and survive.
+            while entries and not entries[-1].strip():
+                entries.pop()
             if entries:
                 result.setdefault(current_title, []).extend(entries)
 
@@ -396,8 +443,9 @@ class ChangelogManager:
             elif line.startswith("- "):
                 _flush()
                 entries = [line]
-            elif line.strip() and entries:
-                # Continuation line of the current multi-line bullet.
+            elif entries:
+                # Continuation line of the current multi-line bullet
+                # (blank lines included — trimmed at flush if trailing).
                 entries.append(line)
         _flush()
         return result

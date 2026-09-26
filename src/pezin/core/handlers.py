@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 import tomli
-import tomli_w
+import tomlkit
 
 from .version import Version
 
@@ -71,14 +71,17 @@ class TomlFileHandler(FileHandler):
             return None
 
     def write_version(self, version: Version) -> None:
-        """Write version to TOML file."""
+        """Write version to TOML file.
+
+        Uses tomlkit so the rewrite preserves everything except the version
+        value: comments, key order, whitespace and comment-only tables.
+        """
         if not self.file_path.exists():
             raise FileNotFoundError(f"File not found: {self.file_path}")
 
         try:
-            with open(self.file_path, "rb") as f:
-                data = tomli.load(f)
-        except (tomli.TOMLDecodeError, OSError) as e:
+            data = tomlkit.parse(self.file_path.read_text(encoding="utf-8"))
+        except (tomlkit.exceptions.ParseError, OSError, UnicodeDecodeError) as e:
             raise ValueError(f"Could not read TOML file {self.file_path}: {e}") from e
 
         # Use the key where we found the version, or the first key as fallback
@@ -92,8 +95,7 @@ class TomlFileHandler(FileHandler):
             ) from e
 
         try:
-            with open(self.file_path, "wb") as f:
-                tomli_w.dump(data, f)
+            self.file_path.write_text(tomlkit.dumps(data), encoding="utf-8")
         except OSError as e:
             raise ValueError(f"Could not write to file {self.file_path}: {e}") from e
 

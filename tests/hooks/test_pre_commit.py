@@ -445,3 +445,33 @@ def test_auto_amend_env_var_prevents_infinite_loop(tmp_path):
             assert version == "0.1.0"
     finally:
         del os.environ[AMEND_ENV_VAR]
+
+
+def test_update_version_preserves_toml_comments(tmp_path):
+    """The hook's TOML writer changes only the version value."""
+    from pezin.hooks.pre_commit import update_version_legacy
+
+    original = """\
+# doodoo project configuration
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "doodoo"
+# Keep in sync with the deployed chart.
+version = "0.75.0"
+
+[tool.pezin]
+# Defaults are fine; this table exists to document them.
+"""
+    version_file = tmp_path / "pyproject.toml"
+    version_file.write_text(original)
+
+    new_version = update_version_legacy(
+        "feat: add new feature", tmp_path, version_file_path=version_file
+    )
+
+    assert new_version == "0.76.0"
+    expected = original.replace('version = "0.75.0"', 'version = "0.76.0"')
+    assert version_file.read_text() == expected
